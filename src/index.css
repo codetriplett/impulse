@@ -11,19 +11,19 @@ html {
 .form {
 	display: flex;
 	height: 100vh;
-	gap: 8px;
+	gap: 4px;
 	flex-direction: column;
 	padding: 16px;
 }
 
 .project-name {
-	margin: 0;
+	margin: 0 4px 0 0;
 	font-size: 28px;
 }
 
 .action-bar {
 	display: flex;
-	gap: 8px;
+	gap: 4px;
 	height: 32px;
 }
 .action-button {
@@ -42,16 +42,58 @@ html {
 .editor {
 	flex: 0 1 100%;
 	display: flex;
-	gap: 8px;
+	gap: 4px;
+}
+.files {
+	flex: 0 1 100%;
+	overflow-x: hidden;
+	overflow-y: auto;
 }
 .file {
-	flex: 0 1 100%;
+	width: 100%;
 	resize: none;
 	color: #ddd;
 	background: #222;
+	overflow-x: auto;
+	overflow-y: hidden;
+}
+.file + .file {
+	margin-top: 4px;
+}
+
+.list-header {
+	display: flex;
+	height: 24px;
+	margin-top: 8px;
+}
+.list-heading {
+	flex: 0 1 100%;
+	margin: 2px 0 0;
+	font-size: 19px;
+}
+.list-icon {
+	width: 24px;
 }
 .import-list,
 .export-list {
 	flex: 0 0 200px;
+	padding: 0 10px;
 	background: #ddd;
+}
+.folder {
+	padding: 0;
+	list-style: none;
+}
+.folder .folder {
+	display: none;
+	padding-left: 16px;
+}
+.folder .folder-expanded {
+	display: block;
+}
+.module-button,
+.file-button {
+	padding: 0;
+	border: none;
+	background: none;
 }

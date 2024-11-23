@@ -8,6 +8,8 @@ const options = {
 export function getPath (rootPath, relativePath) {
 	if (!relativePath.startsWith('.')) {
 		return relativePath;
+	} else if (relativePath === '.') {
+		return '/index';
 	}
 
 	const sections = relativePath.replace(/^.\//, '').split('/');

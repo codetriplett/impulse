@@ -1,66 +1,18 @@
-import parseHeader, { buildMap, cleanMap } from './parse-header';
+import { buildMap } from './parse-header';
+import { renderList } from './list';
+import { createFile, loadFile, saveFile, renderFile } from './file';
 
-const { createState, onRender } = stew;
+const { createState, onRender } = window.stew;
 
 const nodes = JSON.parse(window.localStorage.getItem('project') || '{}');
-const files = JSON.parse(window.localStorage.getItem('files') || '{}');
-let map = buildMap(nodes);
+export const files = JSON.parse(window.localStorage.getItem('files') || '{}');
+export const map = buildMap(nodes);
 
-const state = createState({
+export const state = createState({
 	path: '',
 	file: null,
 	nodes,
 });
-
-function loadFile (codeRef) {
-	const { path } = state;
-	state.file = files[path];
-}
-
-function createFile () {
-	state.file = '';
-}
-
-function saveFile (codeRef) {
-	const { path, nodes } = state;
-	const [codeInput] = codeRef;
-	const folders = path.slice(1).split('/');
-	const file = codeInput.value;
-	let node = nodes[path];
-
-	if (node) {
-		cleanMap(path, node, map);
-	}
-
-	state.file = file;
-	files[path] = file;
-	window.localStorage.setItem('files', JSON.stringify(files));
-
-	node = parseHeader(file, map, folders);
-	nodes[path] = node;
-	window.localStorage.setItem('project', JSON.stringify(nodes));
-
-	Object.assign(state, {
-		nodes: {
-			...state.nodes,
-			[path]: node
-		},
-	});
-}
-
-function organizeByDepth (depthMap) {
-	const levels = [];
-
-	for (const [name, depth] of Object.entries(depthMap)) {
-		if (!levels[depth]) {
-			levels[depth] = [];
-		}
-
-		levels[depth].push(name);
-	}
-
-	return levels.map(level => level.sort());
-}
 
 function getImports (path, depthMap = {}, depth = 0, rootPath) {
 	const { nodes } = state;
@@ -85,8 +37,7 @@ function getImports (path, depthMap = {}, depth = 0, rootPath) {
 		getImports(name, depthMap, depth + 1, rootPath);
 	}
 
-	const imports = organizeByDepth(depthMap);
-	return imports;
+	return depthMap;
 }
 
 function getExports (path, depthMap = {}, depth = 0, rootPath) {
@@ -111,25 +62,15 @@ function getExports (path, depthMap = {}, depth = 0, rootPath) {
 		}
 	}
 
-	const exports = organizeByDepth(depthMap);
-	return exports;
+	return depthMap;
 }
 
-function renderList (levels, type) {
-	if (!levels) {
-		return null;
-	}
-
-	return ['div', { className: type },
-		...levels.map(level => {
-			return ['ul', null,
-				...level.map(name => {
-					return ['li', null, name];
-				}),
-			];
-		}),
-	];
-}
+// show import list and info page for path that is found but not yet loaded
+// - paths to folders should show the imports of all files inside it
+// - paths to files should show the export list as well
+// show info page and export list for module that is found
+// - allow modules to live within project under an alias for their path, to support monorepos
+// lists should have the option to toggle them to be split up by their imports/exports, with subdirectories underneath
 
 function renderApp (memo) {
 	const { path, file, nodes } = state;
@@ -166,8 +107,11 @@ function renderApp (memo) {
 				if (!path) {
 					console.log('toggle help and settings menu');
 					window.localStorage.removeItem('project');
-					map = {};
 					state.nodes = {};
+
+					for (const key in map) {
+						delete map[key];
+					}
 				} else if (file !== null) {
 					saveFile(codeRef);
 				} else if (nodes[path]) {
@@ -194,13 +138,11 @@ function renderApp (memo) {
 				}, !path ? 'Menu' : file !== null ? 'Save' : nodes[path] ? 'Load' : 'Create'],
 			],
 			file !== null && ['div', { className: 'editor' },
-				renderList(imports, 'import-list'),
-				['textarea', {
-					className: 'file',
-					value: file,
-					ref: codeRef,
-				}],
-				renderList(exports, 'export-list'),
+				renderList(imports, 'imports'),
+				['div', { className: 'files' },
+					renderFile(file, codeRef),
+				],
+				renderList(exports, 'exports'),
 			],
 		],
 	];
