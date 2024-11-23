@@ -1,0 +1,22 @@
+{
+  "name": "impulse",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "jest --watch",
+    "build": "esbuild src/index.js --bundle --minify --watch --external:stew --outfile=dist/impulse.min.js",
+    "start": "node server.js"
+  },
+  "author": "triplett",
+  "license": "MIT",
+  "devDependencies": {
+    "@babel/preset-env": "^7.26.0",
+    "esbuild": "^0.24.0",
+    "jest": "^29.7.0"
+  },
+  "dependencies": {
+    "@triplett/stew": "^3.4.0",
+    "acorn": "^8.14.0"
+  }
+}

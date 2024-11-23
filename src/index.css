@@ -1,0 +1,57 @@
+body,
+html {
+	margin: 0;
+	background: #777;
+	overflow: hidden;
+}
+* {
+	box-sizing: border-box;
+}
+
+.form {
+	display: flex;
+	height: 100vh;
+	gap: 8px;
+	flex-direction: column;
+	padding: 16px;
+}
+
+.project-name {
+	margin: 0;
+	font-size: 28px;
+}
+
+.action-bar {
+	display: flex;
+	gap: 8px;
+	height: 32px;
+}
+.action-button {
+	flex: 0 0 80px;
+	padding: 5px 0;
+	font-size: 17px;
+	background: #ddd;
+}
+.action-input {
+	flex: 0 1 100%;
+	padding: 0 6px;
+	font-size: 19px;
+	background: #ddd;
+}
+
+.editor {
+	flex: 0 1 100%;
+	display: flex;
+	gap: 8px;
+}
+.file {
+	flex: 0 1 100%;
+	resize: none;
+	color: #ddd;
+	background: #222;
+}
+.import-list,
+.export-list {
+	flex: 0 0 200px;
+	background: #ddd;
+}
