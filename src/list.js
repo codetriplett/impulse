@@ -1,10 +1,15 @@
 const { createState } = window.stew;
 
-const listState = createState({
+const importState = createState({
 	isSplit: false,
-	isExpanded: false,
-	expandedImportFolders: {},
-	expandedExportFolders: {},
+	isExtended: false,
+	expandedFolders: {},
+});
+
+const exportState = createState({
+	isSplit: false,
+	isExtended: false,
+	expandedFolders: {},
 });
 
 const classNames = {
@@ -64,8 +69,9 @@ function sortFolder (folder, path = '', name = '') {
 }
 
 // TODO: allow toggling to split directory up by each import/export in current file
-function createTree (depthMap) {
-	const { isExpanded } = listState;
+function createTree (depthMap, type) {
+	const listState = type === 'imports' ? importState : exportState;
+	const { isExtended } = listState;
 	const paths = Object.keys(depthMap);
 	const folder = {};
 	const modules = [];
@@ -73,7 +79,7 @@ function createTree (depthMap) {
 	for (const path of paths) {
 		const depth = depthMap[path];
 
-		if (depth !== 0 && !isExpanded) {
+		if (depth !== 0 && !isExtended) {
 			continue;
 		}
 
@@ -91,16 +97,17 @@ function createTree (depthMap) {
 
 function renderFolder (folder, type) {
 	const { path, name, modules = [], folders, files } = folder;
-	const folderKey = type === 'imports' ? 'expandedImportFolders' : 'expandedExportFolders';
-	const isExpanded = listState[folderKey][path];
+	const listState = type === 'imports' ? importState : exportState;
+	const { expandedFolders } = listState;
+	const isExpanded = expandedFolders[path];
 	
 	return ['', null,
 		name && ['button', {
 			className: 'folder-button',
 			type: 'button',
 			onclick: () => {
-				listState[folderKey] = {
-					...listState[folderKey],
+				listState.expandedFolders = {
+					...expandedFolders,
 					[path]: !isExpanded,
 				};
 			},
@@ -136,7 +143,7 @@ function renderFolder (folder, type) {
 						className: 'file-button',
 						type: 'button',
 						onclick: () => {
-							console.log('load', name);
+							console.log('load', `${path}${name}`);
 						},
 					}, name],
 				]
@@ -149,15 +156,17 @@ export function renderList (levels, type) {
 	if (!levels) {
 		return null;
 	}
+	
+	const listState = type === 'imports' ? importState : exportState;
 
 	return memo => {
-		const { isExpanded } = listState;
-		const [prevLevels, prevRootFolder, prevIsExpanded] = memo;
+		const { isExtended } = listState;
+		const [prevLevels, prevRootFolder, prevIsExtended] = memo;
 		let rootFolder = prevRootFolder;
 
-		if (levels !== prevLevels || isExpanded !== prevIsExpanded) {
-			rootFolder = createTree(levels);
-			memo.splice(0, 2, levels, rootFolder, isExpanded);
+		if (levels !== prevLevels || isExtended !== prevIsExtended) {
+			rootFolder = createTree(levels, type);
+			memo.splice(0, 2, levels, rootFolder, isExtended);
 		}
 
 		return ['div', { className: classNames[type] },
@@ -166,9 +175,9 @@ export function renderList (levels, type) {
 				['button', {
 					className: 'list-icon',
 					onclick: () => {
-						listState.isExpanded = !isExpanded;
+						listState.isExtended = !isExtended;
 					},
-				}, isExpanded ? '-' : '+'],
+				}, isExtended ? '-' : '+'],
 			],
 			renderFolder(rootFolder, type),
 		];

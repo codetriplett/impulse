@@ -4,15 +4,22 @@ import { createFile, loadFile, saveFile, renderFile } from './file';
 
 const { createState, onRender } = window.stew;
 
+const path = window.localStorage.getItem('path') || '';
 const nodes = JSON.parse(window.localStorage.getItem('project') || '{}');
 export const files = JSON.parse(window.localStorage.getItem('files') || '{}');
 export const map = buildMap(nodes);
 
 export const state = createState({
-	path: '',
+	path,
 	file: null,
 	nodes,
 });
+
+export const refs = {
+	pathRef: [],
+	codeRef: [],
+	filesRef: [],
+};
 
 function getImports (path, depthMap = {}, depth = 0, rootPath) {
 	const { nodes } = state;
@@ -29,7 +36,7 @@ function getImports (path, depthMap = {}, depth = 0, rootPath) {
 	const names = Object.keys(node);
 
 	for (const name of names) {
-		if (name === rootPath || depthMap[name]) {
+		if (name === rootPath || depthMap[name] !== undefined) {
 			continue;
 		}
 
@@ -53,7 +60,7 @@ function getExports (path, depthMap = {}, depth = 0, rootPath) {
 
 	for (const set of Object.values(location)) {
 		for (const name of set) {
-			if (name === rootPath || depthMap[name]) {
+			if (name === rootPath || depthMap[name] !== undefined) {
 				continue;
 			}
 
@@ -75,8 +82,8 @@ function getExports (path, depthMap = {}, depth = 0, rootPath) {
 function renderApp (memo) {
 	const { path, file, nodes } = state;
 	const [prevPath, prevNodes, prevFile, prevImports, prevExports] = memo;
-	const pathRef = [];
-	const codeRef = [];
+	const { pathRef, codeRef, filesRef } = refs;
+	const isInitial = memo.length === 0;
 	let imports = prevImports;
 	let exports = prevExports;
 
@@ -91,10 +98,15 @@ function renderApp (memo) {
 	}
 
 	onRender(() => {
+		if (isInitial && path) {
+			loadFile();
+		}
+
 		if (file !== null && file !== prevFile) {
 			const [input] = codeRef;
 			input.value = file;
 			input.focus();
+			input.setSelectionRange(0, 0);
 		}
 	});
 
@@ -103,6 +115,9 @@ function renderApp (memo) {
 			className: 'form',
 			onsubmit: event => {
 				event.preventDefault();
+				
+				const [pathInput] = pathRef;
+				pathInput.value = '';
 
 				if (!path) {
 					console.log('toggle help and settings menu');
@@ -113,9 +128,10 @@ function renderApp (memo) {
 						delete map[key];
 					}
 				} else if (file !== null) {
-					saveFile(codeRef);
+					saveFile();
 				} else if (nodes[path]) {
 					loadFile();
+					window.localStorage.setItem('path', path);
 				} else {
 					createFile();
 				}
@@ -139,8 +155,11 @@ function renderApp (memo) {
 			],
 			file !== null && ['div', { className: 'editor' },
 				renderList(imports, 'imports'),
-				['div', { className: 'files' },
-					renderFile(file, codeRef),
+				['div', {
+					className: 'files',
+					ref: filesRef,
+				},
+					renderFile(file, path),
 				],
 				renderList(exports, 'exports'),
 			],
