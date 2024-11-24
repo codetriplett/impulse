@@ -1,25 +1,82 @@
 import { buildMap } from './parse-header';
 import { renderList } from './list';
-import { createFile, loadFile, saveFile, renderFile } from './file';
+import { createFile, loadFile, saveFile, renderTab } from './file';
+import { renderMenu } from './menu';
 
 const { createState, onRender } = window.stew;
 
-const path = window.localStorage.getItem('path') || '';
-const nodes = JSON.parse(window.localStorage.getItem('project') || '{}');
-export const files = JSON.parse(window.localStorage.getItem('files') || '{}');
-export const map = buildMap(nodes);
-
 export const state = createState({
-	path,
-	file: null,
-	nodes,
+	tabs: [],
+	nodes: {},
+	files: {},
+	map: {},
+	showImports: true,
+	showExports: true,
+	extendImports: false,
+	extendExports: false,
 });
+
+export function recallSession () {
+	let impulse;
+
+	try {
+		impulse = JSON.parse(window.localStorage.getItem('impulse') || '{}');
+	} catch (err) {
+		window.localStorage.removeItem('impulse');
+		impulse = {};
+	}
+
+	const { tabs = [0, 'Impulse'], nodes = {}, files = {} } = impulse;
+	const map = buildMap(nodes);
+	Object.assign(state, { tabs, nodes, files, map });
+}
+
+export function storeSession () {
+	const { tabs, nodes, files, map } = state;
+	const impulse = { tabs, nodes, files, map };
+	window.localStorage.setItem('impulse', JSON.stringify(impulse));
+}
 
 export const refs = {
 	pathRef: [],
 	codeRef: [],
 	filesRef: [],
 };
+
+export function getTab () {
+	const { tabs } = state;
+	const [tabIndex] = tabs;
+	return tabs[tabIndex + 2];
+}
+
+export function getPath (tab) {
+	if (!tab) {
+		tab = getTab() || [];
+	}
+
+	const [pathIndex] = tab;
+	return tab[pathIndex + 2];
+}
+
+function switchTab (tabIndex) {
+	const { tabs } = state;
+	tabs[0] = tabIndex;
+	state.tabs = [...tabs];
+	storeSession();
+}
+
+function closeTab (tabIndex) {
+	const { tabs } = state;
+	const [activeTabIndex] = tabs;
+	tabs.splice(tabIndex + 2, 1);
+
+	if (tabIndex < activeTabIndex || activeTabIndex > 0 && activeTabIndex >= tabs.length - 2) {
+		tabs[0] -= 1;
+	}
+
+	state.tabs = [...tabs];
+	storeSession();
+}
 
 function getImports (path, depthMap = {}, depth = 0, rootPath) {
 	const { nodes } = state;
@@ -48,6 +105,7 @@ function getImports (path, depthMap = {}, depth = 0, rootPath) {
 }
 
 function getExports (path, depthMap = {}, depth = 0, rootPath) {
+	const { map } = state;
 	const location = map[path];
 
 	if (!location) {
@@ -80,91 +138,143 @@ function getExports (path, depthMap = {}, depth = 0, rootPath) {
 // lists should have the option to toggle them to be split up by their imports/exports, with subdirectories underneath
 
 function renderApp (memo) {
-	const { path, file, nodes } = state;
-	const [prevPath, prevNodes, prevFile, prevImports, prevExports] = memo;
-	const { pathRef, codeRef, filesRef } = refs;
+	const { tabs, files, showImports, showExports, extendImports, extendExports } = state;
+	const [prevPath, prevFiles, prevImports, prevExports] = memo;
+	const { pathRef, codeRef } = refs;
+	const projectName = tabs[1];
+	const activeTab = getTab();
+	const path = getPath() || '';
 	const isInitial = memo.length === 0;
+	const isFile = !!path;
 	let imports = prevImports;
 	let exports = prevExports;
 
-	if (path !== prevPath || nodes !== prevNodes) {
+	if (path !== prevPath || files !== prevFiles) {
 		imports = getImports(path);
 		exports = getExports(path);
-		memo.splice(0, 2, path, nodes, file, imports, exports);
+		memo.splice(0, 2, path, files, imports, exports);
 
-		if (path && imports === prevImports && exports === prevExports) {
-			return true;
-		}
+		// TODO: change stew to ignore boolean true, like it does for false, instead of keeping existing node?
+		// - it messes with layouts that might have set true for a different expression
+		// - use ref in layout instead, since those are seen as objects which are left alone
+		// if (path && imports === prevImports && exports === prevExports) {
+		// 	return true;
+		// }
 	}
 
 	onRender(() => {
 		if (isInitial && path) {
-			loadFile();
+			const [pathInput] = pathRef;
+			loadFile(path);
 		}
 
-		if (file !== null && file !== prevFile) {
-			const [input] = codeRef;
-			input.value = file;
-			input.focus();
-			input.setSelectionRange(0, 0);
+		if (path !== prevPath) {
+			const [input] = path ? codeRef : pathRef;
+
+			if (input) {
+				if (path) {
+					input.value = files[path];
+				}
+
+				input.focus();
+				input.setSelectionRange(0, 0);
+			}
 		}
 	});
 
-	return ['', null,
+	return ['div', { className: 'app' },
 		['form', {
 			className: 'form',
 			onsubmit: event => {
 				event.preventDefault();
-				
+
+				// TODO: have action bar open new tab
+				// - each tab holds its own textarea stack
+				// - save should be automatic when text is changed (with debounce)
+				// - have user choose when to close tabs
+
 				const [pathInput] = pathRef;
+				const path = pathInput.value;
+				const tabIndex = tabs.length - 2;
 				pathInput.value = '';
 
-				if (!path) {
-					console.log('toggle help and settings menu');
-					window.localStorage.removeItem('project');
-					state.nodes = {};
+				state.tabs = [
+					tabIndex,
+					...state.tabs.slice(1),
+					[0, path || 'Menu', path],
+				];
 
-					for (const key in map) {
-						delete map[key];
-					}
-				} else if (file !== null) {
-					saveFile();
-				} else if (nodes[path]) {
-					loadFile();
-					window.localStorage.setItem('path', path);
-				} else {
-					createFile();
+				if (path && !files[path]) {
+					files[path] = '';
 				}
+				
+				storeSession();
 			},
 		},
 			['div', { className: 'action-bar' },
-				['h1', { className: 'project-name' }, 'Project'],
+				['h1', { className: 'project-name' }, projectName],
 				['input', {
 					className: 'action-input',
 					type: 'text',
 					ref: pathRef,
 					onkeyup: () => {
 						const [pathInput] = pathRef;
-						Object.assign(state, { path: pathInput.value, file: null });
+						Object.assign(state, { path: pathInput.value });
 					},
 				}],
-				['button', {
+				['input', {
 					className: 'action-button',
 					type: 'submit',
-				}, !path ? 'Menu' : file !== null ? 'Save' : nodes[path] ? 'Load' : 'Create'],
+					value: 'Load',
+				}],
 			],
-			file !== null && ['div', { className: 'editor' },
-				renderList(imports, 'imports'),
-				['div', {
-					className: 'files',
-					ref: filesRef,
-				},
-					renderFile(file, path),
+		],
+		activeTab && ['', null,
+			['ul', { className: 'tabs' },
+				['li', { className: `tab list-tab ${isFile && showImports ? 'tab-active' : ''}` },
+					['button', {
+						className: 'tab-button',
+						disabled: !isFile,
+						onclick: () => state.showImports = !showImports,
+					}, 'Imports'],
+					['button', {
+						className: 'tab-icon',
+						onclick: () => state.showImports = !showImports,
+					}, extendImports ? '∴' : '·'],
 				],
-				renderList(exports, 'exports'),
+				...tabs.slice(2).map((tab, i) => {
+					return ['li', { className: `tab ${tab === activeTab ? 'tab-active' : ''}` },
+						['button', {
+							className: 'tab-button',
+							onclick: () => switchTab(i),
+						}, tab[1]],
+						['button', {
+							className: 'tab-icon',
+							onclick: () => closeTab(i),
+						}, '✕'],
+					];
+				}),
+				['li', { className: `tab list-tab ${isFile && showExports ? 'tab-active' : ''}` },
+					['button', {
+						className: 'tab-button',
+						disabled: !isFile,
+						onclick: () => state.showExports = !showExports,
+					}, 'Exports'],
+					['button', {
+						className: 'tab-icon',
+						onclick: () => state.showImports = !showImports,
+					}, extendExports ? '∴' : '·'],
+				],
+			],
+			['div', { className: 'editor' },
+				// TODO: fix stew issue where empty string (path) doesn't remove preview list element
+				showImports && isFile && renderList(imports, 'imports', extendImports),
+				path ? renderTab(activeTab) : renderMenu(),
+				showExports && isFile && renderList(exports, 'exports', extendExports),
 			],
 		],
 	];
 }
 
+recallSession();
 stew('#app', renderApp);

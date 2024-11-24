@@ -17,11 +17,6 @@ const classNames = {
 	exports: 'export-list',
 };
 
-const labels = {
-	imports: 'Imports',
-	exports: 'Exports',
-}
-
 function buildFolder (folder, path) {
 	const reducedPath = path.replace(/\/index$/, '').replace(/^\//, '');
 	const names = reducedPath ? reducedPath.split('/') : [];
@@ -170,15 +165,6 @@ export function renderList (levels, type) {
 		}
 
 		return ['div', { className: classNames[type] },
-			['div', { className: 'list-header' },
-				['h2', { className: 'list-heading' }, labels[type]],
-				['button', {
-					className: 'list-icon',
-					onclick: () => {
-						listState.isExtended = !isExtended;
-					},
-				}, isExtended ? '-' : '+'],
-			],
 			renderFolder(rootFolder, type),
 		];
 	};
