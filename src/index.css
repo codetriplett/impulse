@@ -102,10 +102,12 @@ html {
 }
 .tab-active {
 	position: relative;
+}
+.tab-active:not(.tab-only) {
 	border-bottom-left-radius: 0;
 	border-bottom-right-radius: 0;
 }
-.tab-active:before {
+.tab-active:not(.tab-only):before {
 	content: '';
 	position: absolute;
 	height: 6px;
@@ -180,6 +182,7 @@ html {
 	background: #222;
 }
 .file {
+	display: block;
 	border-radius: 4px;
 	padding: 6px 8px;
 	min-height: 25vh;
@@ -192,7 +195,7 @@ html {
 	outline: none;
 }
 .file + .file {
-	margin-top: 4px;
+	margin-top: 20px;
 }
 .files-first,
 .files-first textarea {

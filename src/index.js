@@ -166,7 +166,7 @@ function renderApp (memo) {
 		// }
 	}
 
-	const tabPlacement = activeTabIndex === 0 ? 'first' : activeTabIndex === tabs.length - 2 ? 'last' : 'middle';
+	const tabPlacement = activeTabIndex === 0 ? tabs.length === 2 ? 'only' : 'first' : activeTabIndex === tabs.length - 2 ? 'last' : 'middle';
 	const hasImports = showImports && imports;
 	const hasExports = showExports && exports;
 
@@ -251,7 +251,7 @@ function renderApp (memo) {
 					}, '☰'],
 				],
 				...tabs.slice(1).map((tab, i) => {
-					return ['li', { className: `tab ${tab === activeTab ? 'tab-active' : ''}` },
+					return ['li', { className: `tab ${tab === activeTab ? 'tab-active' : ''} tab-${tabPlacement}` },
 						['div', { className: 'tab-button-wrapper' },
 							['button', {
 								className: 'tab-button',

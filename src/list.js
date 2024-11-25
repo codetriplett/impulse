@@ -1,3 +1,5 @@
+import { state } from '.';
+
 const { createState } = window.stew;
 
 const importState = createState({
@@ -16,6 +18,31 @@ const classNames = {
 	imports: 'import-list',
 	exports: 'export-list',
 };
+
+// TODO: change this to store just a list of files to show in editor
+// - swap out the lists on the side when a new textarea is clicked into
+// - make it clear which textarea is the one being edited
+// - open imports directly above active textarea and exports directly below
+// - stacking is the alternative to flipping between tabs, and will be much more useful when focus mode is enabled
+//   - focus mode collapses code across all contexts that don't contribute to the variable that are flagged to be in focus
+//   - it helps trace logic across your codebase at a glance
+// - go back to putting the path for the active textarea in the path input at the top
+
+function loadImport (path) {
+	const { tabs } = state;
+	const [{ index: tabIndex }] = tabs;
+	const tab = tabs[tabIndex + 1];
+	const [{ index: pathIndex }] = tab;
+	tab.splice(pathIndex + 1, 0, path);
+	state.tabs = [...tabs];
+}
+
+function loadExport () {
+	state.imports = [
+		...state.imports,
+		path,
+	];
+}
 
 function buildFolder (folder, path) {
 	const reducedPath = path.replace(/\/index$/, '').replace(/^\//, '');
@@ -95,6 +122,7 @@ function renderFolder (folder, type) {
 	const listState = type === 'imports' ? importState : exportState;
 	const { expandedFolders } = listState;
 	const isExpanded = expandedFolders[path];
+	const loadReference = type === 'imports' ? loadImport : loadExport;
 	
 	return ['', null,
 		name && ['button', {
@@ -137,9 +165,7 @@ function renderFolder (folder, type) {
 					['button', {
 						className: 'file-button',
 						type: 'button',
-						onclick: () => {
-							console.log('load', `${path}${name}`);
-						},
+						onclick: () => loadReference(`${path}${name}`),
 					}, name],
 				]
 			}),

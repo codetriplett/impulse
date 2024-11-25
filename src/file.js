@@ -16,29 +16,6 @@ export function loadFile (path) {
 	state.file = files[path];
 }
 
-// TODO: change this to store just a list of files to show in editor
-// - swap out the lists on the side when a new textarea is clicked into
-// - make it clear which textarea is the one being edited
-// - open imports directly above active textarea and exports directly below
-// - stacking is the alternative to flipping between tabs, and will be much more useful when focus mode is enabled
-//   - focus mode collapses code across all contexts that don't contribute to the variable that are flagged to be in focus
-//   - it helps trace logic across your codebase at a glance
-// - go back to putting the path for the active textarea in the path input at the top
-
-export function loadImport (path) {
-	state.imports = [
-		...state.imports,
-		path,
-	];
-}
-
-export function loadExport () {
-	state.imports = [
-		...state.imports,
-		path,
-	];
-}
-
 export function saveFile () {
 	const { nodes, files, map } = state;
 	const { codeRef } = refs;
@@ -68,9 +45,9 @@ export function saveFile () {
 	});
 }
 
-function resizeChange () {
-	const { codeRef, filesRef } = refs;
-	const [codeInput] = codeRef;
+function resizeChange (i) {
+	const { filesRef } = refs;
+	const [codeInput] = fileRefs[i];
 	const [filesDiv] = filesRef
 	const { scrollHeight, scrollWidth } = codeInput;
 	const prevScrollTop = filesDiv.scrollTop;
@@ -121,7 +98,9 @@ export function renderTab (tab, placement) {
 		const { files } = state;
 
 		onRender(() => {
-			resizeChange();
+			for (let i = 0; i < fileRefs.length; i++) {
+				resizeChange(i);
+			}
 		});
 
 		return ['div', { className: 'files-wrapper' },
@@ -137,7 +116,7 @@ export function renderTab (tab, placement) {
 						value: files[path],
 						spellcheck: false,
 						ref,
-						onkeydown: () => resizeChange(),
+						onkeydown: () => resizeChange(i),
 						onfocus: () => focusFile(tab, i),
 						onblur: () => saveChange(ref, path),
 					}];
