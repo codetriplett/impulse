@@ -1,4 +1,4 @@
-import parseHeader, { cleanMap } from './parse-header';
+import parseHeader, { cleanMap } from './parse';
 import { state, refs, getTab, getPath, storeSession } from '.';
 
 const { onRender } = window.stew;
@@ -72,19 +72,23 @@ function resizeChange () {
 	const { codeRef, filesRef } = refs;
 	const [codeInput] = codeRef;
 	const [filesDiv] = filesRef
-	const { scrollHeight } = codeInput;
+	const { scrollHeight, scrollWidth } = codeInput;
 	const prevScrollTop = filesDiv.scrollTop;
+	const prevScrollLeft = filesDiv.scrollLeft;
 	codeInput.style.height = '0px';
+	codeInput.style.width = '0px';
 	codeInput.style.height = `${scrollHeight + 16}px`;
+	codeInput.style.width = `${scrollWidth + 16}px`;
 
 	setTimeout(() => {
 		filesDiv.scrollTop = prevScrollTop;
+		filesDiv.scrollLeft = prevScrollLeft;
 	}, 0);
 }
 
 function focusFile (tab, i) {
 	const { tabs } = state;
-	tab[0] = i;
+	tab[0].index = i;
 	state.tabs = [...tabs];
 }
 
@@ -107,9 +111,9 @@ function saveChange (ref, path) {
 	storeSession();
 }
 
-export function renderTab (tab) {
+export function renderTab (tab, placement) {
 	const { codeRef, filesRef } = refs;
-	const [activePathIndex,, ...paths] = tab;
+	const [{ index: activePathIndex }, ...paths] = tab;
 	fileRefs = paths.map(() => []);
 	fileRefs[activePathIndex] = codeRef;
 
@@ -120,22 +124,25 @@ export function renderTab (tab) {
 			resizeChange();
 		});
 
-		return ['div', {
-			className: 'files',
-			ref: filesRef,
-		},
-			...paths.map((path, i) => {
-				const ref = fileRefs[i];
+		return ['div', { className: 'files-wrapper' },
+			['div', {
+				className: `files files-${placement}`,
+				ref: filesRef,
+			},
+				...paths.map((path, i) => {
+					const ref = fileRefs[i];
 
-				return ['textarea', {
-					className: 'file',
-					value: files[path],
-					ref,
-					onkeydown: () => resizeChange(),
-					onfocus: () => focusFile(tab, i),
-					onblur: () => saveChange(ref, path),
-				}];
-			}),
+					return ['textarea', {
+						className: 'file',
+						value: files[path],
+						spellcheck: false,
+						ref,
+						onkeydown: () => resizeChange(),
+						onfocus: () => focusFile(tab, i),
+						onblur: () => saveChange(ref, path),
+					}];
+				}),
+			]
 		];
 	};
 }

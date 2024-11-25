@@ -147,7 +147,7 @@ function renderFolder (folder, type) {
 	];
 }
 
-export function renderList (levels, type) {
+export function renderList (levels, type, showSettings) {
 	if (!levels) {
 		return null;
 	}
@@ -160,11 +160,21 @@ export function renderList (levels, type) {
 		let rootFolder = prevRootFolder;
 
 		if (levels !== prevLevels || isExtended !== prevIsExtended) {
-			rootFolder = createTree(levels, type);
-			memo.splice(0, 2, levels, rootFolder, isExtended);
+			rootFolder = createTree(levels, type, isExtended);
+			memo.splice(0, 3, levels, rootFolder, isExtended);
 		}
 
 		return ['div', { className: classNames[type] },
+			showSettings && ['ul', { className: 'list-settings' },
+				['li', { className: 'list-setting' },
+					['input', {
+						type: 'checkbox',
+						checked: isExtended,
+						onclick: () => listState.isExtended = !isExtended,
+					}],
+					['label', { className: 'list-setting-label' }, 'Recursive Scan'],
+				],
+			],
 			renderFolder(rootFolder, type),
 		];
 	};

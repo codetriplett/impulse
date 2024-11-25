@@ -1,4 +1,4 @@
-import parseHeader, { getPath } from './parse-header';
+import parseHeader, { getPath } from './parse';
 
 describe('getPath', () => {
 	it('gets root path', () => {

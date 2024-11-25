@@ -1,4 +1,4 @@
-import { buildMap } from './parse-header';
+import { buildMap } from './parse';
 import { renderList } from './list';
 import { createFile, loadFile, saveFile, renderTab } from './file';
 import { renderMenu } from './menu';
@@ -12,8 +12,8 @@ export const state = createState({
 	map: {},
 	showImports: true,
 	showExports: true,
-	extendImports: false,
-	extendExports: false,
+	showImportSettings: false,
+	showExportSettings: false,
 });
 
 export function recallSession () {
@@ -26,7 +26,7 @@ export function recallSession () {
 		impulse = {};
 	}
 
-	const { tabs = [0, 'Impulse'], nodes = {}, files = {} } = impulse;
+	const { tabs = [{ index: 0, name: 'Impulse', scroll: 0 }], nodes = {}, files = {} } = impulse;
 	const map = buildMap(nodes);
 	Object.assign(state, { tabs, nodes, files, map });
 }
@@ -45,33 +45,33 @@ export const refs = {
 
 export function getTab () {
 	const { tabs } = state;
-	const [tabIndex] = tabs;
-	return tabs[tabIndex + 2];
+	const [{ index }] = tabs;
+	return tabs[index + 1];
 }
 
 export function getPath (tab) {
 	if (!tab) {
-		tab = getTab() || [];
+		tab = getTab() || [{}];
 	}
 
-	const [pathIndex] = tab;
-	return tab[pathIndex + 2];
+	const [{ index }] = tab;
+	return tab[index + 1];
 }
 
 function switchTab (tabIndex) {
 	const { tabs } = state;
-	tabs[0] = tabIndex;
+	tabs[0].index = tabIndex;
 	state.tabs = [...tabs];
 	storeSession();
 }
 
 function closeTab (tabIndex) {
 	const { tabs } = state;
-	const [activeTabIndex] = tabs;
-	tabs.splice(tabIndex + 2, 1);
+	const [{ index: activeTabIndex }] = tabs;
+	tabs.splice(tabIndex + 1, 1);
 
-	if (tabIndex < activeTabIndex || activeTabIndex > 0 && activeTabIndex >= tabs.length - 2) {
-		tabs[0] -= 1;
+	if (tabIndex < activeTabIndex || activeTabIndex > 0 && activeTabIndex >= tabs.length - 1) {
+		tabs[0].index -= 1;
 	}
 
 	state.tabs = [...tabs];
@@ -83,7 +83,7 @@ function getImports (path, depthMap = {}, depth = 0, rootPath) {
 	const node = nodes[path];
 
 	if (!node) {
-		return [];
+		return;
 	}
 
 	if (!rootPath) {
@@ -101,6 +101,10 @@ function getImports (path, depthMap = {}, depth = 0, rootPath) {
 		getImports(name, depthMap, depth + 1, rootPath);
 	}
 
+	if (Object.keys(depthMap).length === 0) {
+		return;
+	}
+
 	return depthMap;
 }
 
@@ -109,7 +113,7 @@ function getExports (path, depthMap = {}, depth = 0, rootPath) {
 	const location = map[path];
 
 	if (!location) {
-		return [];
+		return;
 	}
 
 	if (!rootPath) {
@@ -138,10 +142,10 @@ function getExports (path, depthMap = {}, depth = 0, rootPath) {
 // lists should have the option to toggle them to be split up by their imports/exports, with subdirectories underneath
 
 function renderApp (memo) {
-	const { tabs, files, showImports, showExports, extendImports, extendExports } = state;
+	const { tabs, files, showImports, showExports, showImportSettings, showExportSettings } = state;
 	const [prevPath, prevFiles, prevImports, prevExports] = memo;
 	const { pathRef, codeRef } = refs;
-	const projectName = tabs[1];
+	const { index: activeTabIndex, name: projectName } = tabs[0];
 	const activeTab = getTab();
 	const path = getPath() || '';
 	const isInitial = memo.length === 0;
@@ -152,7 +156,7 @@ function renderApp (memo) {
 	if (path !== prevPath || files !== prevFiles) {
 		imports = getImports(path);
 		exports = getExports(path);
-		memo.splice(0, 2, path, files, imports, exports);
+		memo.splice(0, 4, path, files, imports, exports);
 
 		// TODO: change stew to ignore boolean true, like it does for false, instead of keeping existing node?
 		// - it messes with layouts that might have set true for a different expression
@@ -162,9 +166,12 @@ function renderApp (memo) {
 		// }
 	}
 
+	const tabPlacement = activeTabIndex === 0 ? 'first' : activeTabIndex === tabs.length - 2 ? 'last' : 'middle';
+	const hasImports = showImports && imports;
+	const hasExports = showExports && exports;
+
 	onRender(() => {
 		if (isInitial && path) {
-			const [pathInput] = pathRef;
 			loadFile(path);
 		}
 
@@ -193,15 +200,16 @@ function renderApp (memo) {
 				// - save should be automatic when text is changed (with debounce)
 				// - have user choose when to close tabs
 
+				const { tabs } = state;
 				const [pathInput] = pathRef;
 				const path = pathInput.value;
-				const tabIndex = tabs.length - 2;
+				const tabIndex = tabs.length - 1;
 				pathInput.value = '';
 
 				state.tabs = [
-					tabIndex,
-					...state.tabs.slice(1),
-					[0, path || 'Menu', path],
+					{ ...tabs[0], index: tabIndex },
+					...tabs.slice(1),
+					[{ index: 0, name: path || 'Menu' }, path],
 				];
 
 				if (path && !files[path]) {
@@ -231,46 +239,50 @@ function renderApp (memo) {
 		],
 		activeTab && ['', null,
 			['ul', { className: 'tabs' },
-				['li', { className: `tab list-tab ${isFile && showImports ? 'tab-active' : ''}` },
+				['li', { className: `tab list-tab ${hasImports ? 'tab-active' : ''}` },
 					['button', {
 						className: 'tab-button',
-						disabled: !isFile,
+						disabled: !imports || !isFile,
 						onclick: () => state.showImports = !showImports,
 					}, 'Imports'],
 					['button', {
 						className: 'tab-icon',
-						onclick: () => state.showImports = !showImports,
-					}, extendImports ? '∴' : '·'],
+						onclick: () => state.showImportSettings = !showImportSettings,
+					}, '☰'],
 				],
-				...tabs.slice(2).map((tab, i) => {
+				...tabs.slice(1).map((tab, i) => {
 					return ['li', { className: `tab ${tab === activeTab ? 'tab-active' : ''}` },
-						['button', {
-							className: 'tab-button',
-							onclick: () => switchTab(i),
-						}, tab[1]],
+						['div', { className: 'tab-button-wrapper' },
+							['button', {
+								className: 'tab-button',
+								onclick: () => switchTab(i),
+							}, tab[0].name],
+						],
 						['button', {
 							className: 'tab-icon',
 							onclick: () => closeTab(i),
 						}, '✕'],
 					];
 				}),
-				['li', { className: `tab list-tab ${isFile && showExports ? 'tab-active' : ''}` },
+				['li', { className: `tab list-tab ${hasExports ? 'tab-active' : ''}` },
 					['button', {
 						className: 'tab-button',
-						disabled: !isFile,
+						disabled: !exports || !isFile,
 						onclick: () => state.showExports = !showExports,
 					}, 'Exports'],
 					['button', {
 						className: 'tab-icon',
-						onclick: () => state.showImports = !showImports,
-					}, extendExports ? '∴' : '·'],
+						onclick: () => state.showExportSettings = !showExportSettings,
+					}, '☰'],
 				],
 			],
-			['div', { className: 'editor' },
-				// TODO: fix stew issue where empty string (path) doesn't remove preview list element
-				showImports && isFile && renderList(imports, 'imports', extendImports),
-				path ? renderTab(activeTab) : renderMenu(),
-				showExports && isFile && renderList(exports, 'exports', extendExports),
+			['div', { className: 'editor-wrapper' },
+				['div', { className: 'editor' },
+					// TODO: fix stew issue where empty string (path) doesn't remove preview list element
+					hasImports && renderList(imports, 'imports', showImportSettings),
+					path ? renderTab(activeTab, tabPlacement) : renderMenu(),
+					hasExports && renderList(exports, 'exports', showExportSettings),
+				],
 			],
 		],
 	];

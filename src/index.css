@@ -9,10 +9,11 @@ html {
 }
 
 .app {
+	display: flex;
+	flex-direction: column;
 	height: 100vh;
 	padding: 16px;
 }
-
 .form {
 	display: flex;
 	gap: 16px;
@@ -57,18 +58,21 @@ html {
 	background: #ddd;
 }
 .list-tab {
-	flex: 0 0 80px;
-}
-.list-tab.tab-active {
 	flex: 0 0 200px;
 }
-.tab-button {
+.tab-button-wrapper {
 	flex: 0 1 100%;
+	overflow: hidden;
+}
+.tab-button {
+	width: 100%;
 	padding: 0;
 	height: 24px;
 	border: none;
 	white-space: nowrap;
 	background: none;
+	overflow: hidden;
+	text-overflow: ellipsis;
 }
 .tab-icon {
 	flex: 0 0 24px;
@@ -77,13 +81,13 @@ html {
 	border: 4px solid transparent;
 	border-radius: 50%;
 	font-weight: bold;
-	font-size: 21px;
+	font-size: 11px;
 	line-height: 15px;
 	color: #222;
 	background-color: #ccc;
 	background-clip: padding-box;
 }
-.tab:not(.lsit-tab) .tab-icon {
+.tab:not(.list-tab) .tab-icon {
 	font-size: 9px;
 }
 .tab-active:not(.list-tab) .tab-icon {
@@ -107,7 +111,10 @@ html {
 	height: 6px;
 	left: 0;
 	right: 0;
-	bottom: -5px;
+	top: 23px;
+}
+.tab-active:not(.list-tab):before {
+	height: calc(100vh - 110px);
 }
 .tab-active,
 .tab-active:before {
@@ -129,22 +136,39 @@ html {
 .list-tab.tab-active .tab-icon {
 	display: block;
 }
+.list-settings {
+	margin: 8px 0 0;
+	padding: 0;
+	list-style: none;
+}
+.list-setting-label {
+	vertical-align: top;
+	margin-left: 3px;
+}
 
 .menu {
 	flex: 0 1 100%;
 	background: #222;
 }
 
-.editor {
+.editor-wrapper {
 	flex: 0 1 100%;
+	overflow-y: hidden;
+}
+.editor {
 	display: flex;
 	gap: 4px;
 }
-.files {
+.files-wrapper {
 	flex: 0 1 100%;
-	height: calc(100vh - 66px);
-	overflow-x: hidden;
-	overflow-y: auto;
+	height: calc(100vh - 110px);
+	overflow-y: hidden;
+	z-index: 1;
+}
+.files {
+	border-radius: 4px;
+	height: 100%;
+	overflow: auto;
 }
 .file-header {
 	display: inline-block;
@@ -157,21 +181,26 @@ html {
 }
 .file {
 	border-radius: 4px;
-	border-top-left-radius: 0;
 	padding: 6px 8px;
-	width: 100%;
 	min-height: 25vh;
 	resize: none;
 	color: #ddd;
 	white-space: nowrap;
 	background: #222;
-	overflow-x: auto;
-	overflow-y: hidden;
+	overflow: hidden;
 	border: none;
 	outline: none;
 }
 .file + .file {
 	margin-top: 4px;
+}
+.files-first,
+.files-first textarea {
+	border-top-left-radius: 0;
+}
+.files-last,
+.files-last textarea {
+	border-top-right-radius: 0;
 }
 
 .import-list,
