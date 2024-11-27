@@ -1,4 +1,4 @@
-import { state } from '.';
+import { state, storeSession } from '.';
 
 const { createState } = window.stew;
 
@@ -34,14 +34,19 @@ function loadImport (path) {
 	const tab = tabs[tabIndex + 1];
 	const [{ index: pathIndex }] = tab;
 	tab.splice(pathIndex + 1, 0, path);
+	tab[0].index += 1;
 	state.tabs = [...tabs];
+	storeSession();
 }
 
-function loadExport () {
-	state.imports = [
-		...state.imports,
-		path,
-	];
+function loadExport (path) {
+	const { tabs } = state;
+	const [{ index: tabIndex }] = tabs;
+	const tab = tabs[tabIndex + 1];
+	const [{ index: pathIndex }] = tab;
+	tab.splice(pathIndex + 2, 0, path);
+	state.tabs = [...tabs];
+	storeSession();
 }
 
 function buildFolder (folder, path) {

@@ -48,28 +48,30 @@ export function saveFile () {
 function resizeChange (i) {
 	const { filesRef } = refs;
 	const [codeInput] = fileRefs[i];
+	const codeWrapper = codeInput.parentElement;
 	const [filesDiv] = filesRef
-	const { scrollHeight, scrollWidth } = codeInput;
-	const prevScrollTop = filesDiv.scrollTop;
-	const prevScrollLeft = filesDiv.scrollLeft;
-	codeInput.style.height = '0px';
+	const { scrollTop, scrollLeft } = filesDiv;
+	const { scrollHeight, scrollWidth, clientHeight, clientWidth } = codeInput;
+	const isBottom = scrollTop > 0 && scrollTop + clientHeight >= clientHeight;
+	const isRight = scrollLeft > 0 && scrollLeft + clientWidth >= clientWidth;
+	codeWrapper.style.height = '0px';
 	codeInput.style.width = '0px';
-	codeInput.style.height = `${scrollHeight + 16}px`;
+	codeWrapper.style.height = `${scrollHeight + 16}px`;
 	codeInput.style.width = `${scrollWidth + 16}px`;
-
-	setTimeout(() => {
-		filesDiv.scrollTop = prevScrollTop;
-		filesDiv.scrollLeft = prevScrollLeft;
-	}, 0);
+	filesDiv.scrollTop = isBottom ? scrollHeight : scrollTop;
+	filesDiv.scrollLeft = isRight ? scrollWidth : scrollLeft;
 }
 
-function focusFile (tab, i) {
-	const { tabs } = state;
-	tab[0].index = i;
-	state.tabs = [...tabs];
+function closeReference (tab, i) {
+	if (i < tab[0].index) {
+		tab[0].index -= 1;
+	}
+
+	tab.splice(i + 1, 1);
+	state.tabs = [...state.tabs];
 }
 
-function saveChange (ref, path) {
+function saveChange (ref, path, i) {
 	const { nodes, files, map } = state;
 	const [input] = ref;
 	const folders = path.slice(1).split('/');
@@ -85,6 +87,7 @@ function saveChange (ref, path) {
 		node: { ...nodes },
 	});
 
+	resizeChange(i);
 	storeSession();
 }
 
@@ -111,15 +114,28 @@ export function renderTab (tab, placement) {
 				...paths.map((path, i) => {
 					const ref = fileRefs[i];
 
-					return ['textarea', {
-						className: 'file',
-						value: files[path],
-						spellcheck: false,
-						ref,
-						onkeydown: () => resizeChange(i),
-						onfocus: () => focusFile(tab, i),
-						onblur: () => saveChange(ref, path),
-					}];
+					return ['div', { className: 'file-wrapper' },
+						['div', { className: 'file-header' },
+							['h2', { className: 'file-heading' }, path],
+							i !== activePathIndex && ['button', {
+								className: 'file-icon',
+								onclick: () => closeReference(tab, i),
+							}, '✕'],
+						],
+						['div', { className: 'textarea-wrapper' },
+							...Array(Math.abs(i - activePathIndex)).fill(0).map(() => ['div', {
+								className: 'indent-line',
+							}]),
+							['textarea', {
+								className: 'file',
+								value: files[path],
+								spellcheck: false,
+								readOnly: i !== activePathIndex,
+								ref,
+								onpaste: () => saveChange(ref, path, i),
+							}],
+						],
+					];
 				}),
 			]
 		];

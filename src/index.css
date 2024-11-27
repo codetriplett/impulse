@@ -74,6 +74,7 @@ html {
 	overflow: hidden;
 	text-overflow: ellipsis;
 }
+.file-icon,
 .tab-icon {
 	flex: 0 0 24px;
 	padding: 0;
@@ -90,6 +91,7 @@ html {
 .tab:not(.list-tab) .tab-icon {
 	font-size: 9px;
 }
+.file-icon,
 .tab-active:not(.list-tab) .tab-icon {
 	color: #ddd;
 	background-color: #333;
@@ -102,21 +104,16 @@ html {
 }
 .tab-active {
 	position: relative;
-}
-.tab-active:not(.tab-only) {
 	border-bottom-left-radius: 0;
 	border-bottom-right-radius: 0;
 }
-.tab-active:not(.tab-only):before {
+.tab-active:before {
 	content: '';
 	position: absolute;
 	height: 6px;
 	left: 0;
 	right: 0;
 	top: 23px;
-}
-.tab-active:not(.list-tab):before {
-	height: calc(100vh - 110px);
 }
 .tab-active,
 .tab-active:before {
@@ -171,24 +168,17 @@ html {
 	border-radius: 4px;
 	height: 100%;
 	overflow: auto;
-}
-.file-header {
-	display: inline-block;
-	border-top-left-radius: 4px;
-	border-top-right-radius: 4px;
-	padding: 4px 8px 0;
-	font-size: 19px;
-	color: #ddd;
 	background: #222;
 }
 .file {
+	flex: 0 0 auto;
 	display: block;
-	border-radius: 4px;
 	padding: 6px 8px;
+	height: 100%;
 	min-height: 25vh;
 	resize: none;
 	color: #ddd;
-	white-space: nowrap;
+	white-space: pre;
 	background: #222;
 	overflow: hidden;
 	border: none;
@@ -235,4 +225,28 @@ html {
 	padding: 0;
 	border: none;
 	background: none;
+}
+
+.file-header {
+	display: flex;
+	color: #ddd;
+	background: #222;
+}
+.file-heading {
+	flex: 0 1 100%;
+	margin: 0;
+	font-size: 19px;
+	font-weight: normal;
+	text-align: center;
+}
+
+.textarea-wrapper {
+	display: flex;
+}
+.indent-line {
+	flex: 0 0 8px;
+	border-left: 4px solid #222;
+	border-right: 4px solid #777;
+	height: 100%;
+	background: #222;
 }
