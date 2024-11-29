@@ -114,6 +114,16 @@ html {
 	left: 0;
 	right: 0;
 	top: 23px;
+	z-index: 2;
+}
+.tabs:before {
+	content: '';
+	position: absolute;
+	height: 16px;
+	left: 204px;
+	right: 204px;
+	top: 28px;
+	z-index: 2;
 }
 .tab-active,
 .tab-active:before {
@@ -156,18 +166,13 @@ html {
 }
 .editor {
 	display: flex;
-	gap: 4px;
 }
 .files-wrapper {
+	position: relative;
 	flex: 0 1 100%;
-	height: calc(100vh - 110px);
-	overflow-y: hidden;
+	height: calc(100vh - 126px);
+	overflow-y: scroll;
 	z-index: 1;
-}
-.files {
-	border-radius: 4px;
-	height: 100%;
-	overflow: auto;
 	background: #222;
 }
 .file {
@@ -204,9 +209,11 @@ html {
 	background: #ddd;
 }
 .import-list {
+	margin-right: 4px;
 	border-top-left-radius: 0;
 }
 .export-list {
+	margin-left: 4px;
 	border-top-right-radius: 0;
 }
 .folder {
@@ -228,6 +235,8 @@ html {
 }
 
 .file-header {
+	position: sticky;
+	top: 0;
 	display: flex;
 	color: #ddd;
 	background: #222;
@@ -242,11 +251,4 @@ html {
 
 .textarea-wrapper {
 	display: flex;
-}
-.indent-line {
-	flex: 0 0 8px;
-	border-left: 4px solid #222;
-	border-right: 4px solid #777;
-	height: 100%;
-	background: #222;
 }

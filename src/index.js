@@ -7,6 +7,8 @@ const { createState, onRender } = window.stew;
 
 export const state = createState({
 	tabs: [],
+	imports: [],
+	exports: [],
 	nodes: {},
 	files: {},
 	map: {},

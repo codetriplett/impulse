@@ -69,6 +69,7 @@ function closeReference (tab, i) {
 
 	tab.splice(i + 1, 1);
 	state.tabs = [...state.tabs];
+	storeSession();
 }
 
 function saveChange (ref, path, i) {
@@ -91,53 +92,69 @@ function saveChange (ref, path, i) {
 	storeSession();
 }
 
+function renderFiles (tab, placement, paths, type) {
+	if (!paths.length) {
+		return;
+	}
+
+	const { files } = state;
+	const { filesRef } = refs;
+	const [{ index: activePathIndex }] = tab;
+	const indexOffset = type === 'imports' ? 0 : activePathIndex + (type === 'main' ? 0 : 1);
+
+	return ['div', { className: `files-wrapper files-wrapper-${type}` },
+		['div', {
+			className: `files files-${placement}`,
+			ref: filesRef,
+		},
+			...paths.map((path, i) => {
+				const fileIndex = indexOffset + i;
+				const ref = fileRefs[fileIndex];
+
+				return ['div', { className: 'file-wrapper' },
+					type !== 'main' && ['div', { className: 'file-header' },
+						['h2', { className: 'file-heading' }, path],
+						indexOffset !== activePathIndex && ['button', {
+							className: 'file-icon',
+							onclick: () => closeReference(tab, fileIndex),
+						}, '✕'],
+					],
+					['div', { className: 'textarea-wrapper' },
+						['textarea', {
+							className: 'file',
+							value: files[path],
+							spellcheck: false,
+							readOnly: fileIndex !== activePathIndex,
+							ref,
+							onpaste: () => saveChange(ref, path, fileIndex),
+						}],
+					],
+				];
+			}),
+		],
+	];
+}
+
 export function renderTab (tab, placement) {
-	const { codeRef, filesRef } = refs;
+	const { codeRef } = refs;
 	const [{ index: activePathIndex }, ...paths] = tab;
 	fileRefs = paths.map(() => []);
 	fileRefs[activePathIndex] = codeRef;
 
 	return () => {
-		const { files } = state;
-
 		onRender(() => {
 			for (let i = 0; i < fileRefs.length; i++) {
 				resizeChange(i);
 			}
 		});
 
-		return ['div', { className: 'files-wrapper' },
-			['div', {
-				className: `files files-${placement}`,
-				ref: filesRef,
-			},
-				...paths.map((path, i) => {
-					const ref = fileRefs[i];
+		const importPaths = paths.slice(0, activePathIndex);
+		const exportPaths = paths.slice(activePathIndex + 1);
 
-					return ['div', { className: 'file-wrapper' },
-						['div', { className: 'file-header' },
-							['h2', { className: 'file-heading' }, path],
-							i !== activePathIndex && ['button', {
-								className: 'file-icon',
-								onclick: () => closeReference(tab, i),
-							}, '✕'],
-						],
-						['div', { className: 'textarea-wrapper' },
-							...Array(Math.abs(i - activePathIndex)).fill(0).map(() => ['div', {
-								className: 'indent-line',
-							}]),
-							['textarea', {
-								className: 'file',
-								value: files[path],
-								spellcheck: false,
-								readOnly: i !== activePathIndex,
-								ref,
-								onpaste: () => saveChange(ref, path, i),
-							}],
-						],
-					];
-				}),
-			]
+		return ['', null,
+			renderFiles(tab, placement, importPaths, 'imports'),
+			renderFiles(tab, placement, [paths[activePathIndex]], 'main'),
+			renderFiles(tab, placement, exportPaths, activePathIndex + 1, 'exports'),
 		];
 	};
 }
