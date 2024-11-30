@@ -62,7 +62,7 @@ function resizeChange (i) {
 	filesDiv.scrollLeft = isRight ? scrollWidth : scrollLeft;
 }
 
-function closeReference (tab, i) {
+export function closeReference (tab, i) {
 	if (i < tab[0].index) {
 		tab[0].index -= 1;
 	}
@@ -92,7 +92,7 @@ function saveChange (ref, path, i) {
 	storeSession();
 }
 
-function renderFiles (tab, placement, paths, type) {
+function renderFiles (tab, placement, paths, type, isBefore) {
 	if (!paths.length) {
 		return;
 	}
@@ -102,7 +102,7 @@ function renderFiles (tab, placement, paths, type) {
 	const [{ index: activePathIndex }] = tab;
 	const indexOffset = type === 'imports' ? 0 : activePathIndex + (type === 'main' ? 0 : 1);
 
-	return ['div', { className: `files-wrapper files-wrapper-${type}` },
+	return ['div', { className: `files-wrapper files-wrapper-${type} ${isBefore ? 'files-wrapper-before' : ''}` },
 		['div', {
 			className: `files files-${placement}`,
 			ref: filesRef,
@@ -152,9 +152,9 @@ export function renderTab (tab, placement) {
 		const exportPaths = paths.slice(activePathIndex + 1);
 
 		return ['', null,
-			renderFiles(tab, placement, importPaths, 'imports'),
-			renderFiles(tab, placement, [paths[activePathIndex]], 'main'),
-			renderFiles(tab, placement, exportPaths, activePathIndex + 1, 'exports'),
+			renderFiles(tab, placement, importPaths, 'imports', true),
+			renderFiles(tab, placement, [paths[activePathIndex]], 'main', exportPaths.length > 0),
+			renderFiles(tab, placement, exportPaths, 'exports'),
 		];
 	};
 }

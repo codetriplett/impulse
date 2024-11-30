@@ -1,6 +1,6 @@
 import { buildMap } from './parse';
 import { renderList } from './list';
-import { createFile, loadFile, saveFile, renderTab } from './file';
+import { renderTab } from './file';
 import { renderMenu } from './menu';
 
 const { createState, onRender } = window.stew;
@@ -40,7 +40,6 @@ export function storeSession () {
 }
 
 export const refs = {
-	pathRef: [],
 	codeRef: [],
 	filesRef: [],
 };
@@ -64,6 +63,10 @@ function switchTab (tabIndex) {
 	const { tabs } = state;
 	tabs[0].index = tabIndex;
 	state.tabs = [...tabs];
+
+	const path = getPath();
+	window.location.hash = path;
+
 	storeSession();
 }
 
@@ -136,6 +139,42 @@ function getExports (path, depthMap = {}, depth = 0, rootPath) {
 	return depthMap;
 }
 
+function loadPath () {
+	const { hash } = window.location;
+	const { files, tabs } = state;
+	const path = hash.slice(1);
+	const tabIndex = tabs.length - 1;
+
+	if (path && !path.startsWith('/')) {
+		return;
+	}
+
+	for (const [i, tab] of tabs.slice(1).entries()) {
+		const [{ index }] = tab;
+		const mainPath = tab[index + 1];
+
+		if (mainPath === path) {
+			switchTab(i);
+			return;
+		}
+	}
+
+	state.tabs = [
+		{ ...tabs[0], index: tabIndex },
+		...tabs.slice(1),
+		[{ index: 0, name: path || 'Menu' }, path],
+	];
+
+	if (path && !files[path]) {
+		files[path] = '';
+	}
+}
+
+window.onhashchange = () => {
+	loadPath();
+	storeSession();
+};
+
 // show import list and info page for path that is found but not yet loaded
 // - paths to folders should show the imports of all files inside it
 // - paths to files should show the export list as well
@@ -146,11 +185,10 @@ function getExports (path, depthMap = {}, depth = 0, rootPath) {
 function renderApp (memo) {
 	const { tabs, files, showImports, showExports, showImportSettings, showExportSettings } = state;
 	const [prevPath, prevFiles, prevImports, prevExports] = memo;
-	const { pathRef, codeRef } = refs;
-	const { index: activeTabIndex, name: projectName } = tabs[0];
+	const { codeRef } = refs;
+	const { index: activeTabIndex } = tabs[0];
 	const activeTab = getTab();
 	const path = getPath() || '';
-	const isInitial = memo.length === 0;
 	const isFile = !!path;
 	let imports = prevImports;
 	let exports = prevExports;
@@ -173,12 +211,8 @@ function renderApp (memo) {
 	const hasExports = showExports && exports;
 
 	onRender(() => {
-		if (isInitial && path) {
-			loadFile(path);
-		}
-
 		if (path !== prevPath) {
-			const [input] = path ? codeRef : pathRef;
+			const [input] = codeRef
 
 			if (input) {
 				if (path) {
@@ -192,53 +226,6 @@ function renderApp (memo) {
 	});
 
 	return ['div', { className: 'app' },
-		['form', {
-			className: 'form',
-			onsubmit: event => {
-				event.preventDefault();
-
-				// TODO: have action bar open new tab
-				// - each tab holds its own textarea stack
-				// - save should be automatic when text is changed (with debounce)
-				// - have user choose when to close tabs
-
-				const { tabs } = state;
-				const [pathInput] = pathRef;
-				const path = pathInput.value;
-				const tabIndex = tabs.length - 1;
-				pathInput.value = '';
-
-				state.tabs = [
-					{ ...tabs[0], index: tabIndex },
-					...tabs.slice(1),
-					[{ index: 0, name: path || 'Menu' }, path],
-				];
-
-				if (path && !files[path]) {
-					files[path] = '';
-				}
-				
-				storeSession();
-			},
-		},
-			['div', { className: 'action-bar' },
-				['h1', { className: 'project-name' }, projectName],
-				['input', {
-					className: 'action-input',
-					type: 'text',
-					ref: pathRef,
-					onkeyup: () => {
-						const [pathInput] = pathRef;
-						Object.assign(state, { path: pathInput.value });
-					},
-				}],
-				['input', {
-					className: 'action-button',
-					type: 'submit',
-					value: 'Load',
-				}],
-			],
-		],
 		activeTab && ['', null,
 			['ul', { className: 'tabs' },
 				['li', { className: `tab list-tab ${hasImports ? 'tab-active' : ''}` },
@@ -281,9 +268,9 @@ function renderApp (memo) {
 			['div', { className: 'editor-wrapper' },
 				['div', { className: 'editor' },
 					// TODO: fix stew issue where empty string (path) doesn't remove preview list element
-					hasImports && renderList(imports, 'imports', showImportSettings),
+					hasImports && renderList(imports, 'imports', showImportSettings, activeTab),
 					path ? renderTab(activeTab, tabPlacement) : renderMenu(),
-					hasExports && renderList(exports, 'exports', showExportSettings),
+					hasExports && renderList(exports, 'exports', showExportSettings, activeTab),
 				],
 			],
 		],
@@ -291,4 +278,5 @@ function renderApp (memo) {
 }
 
 recallSession();
+loadPath();
 stew('#app', renderApp);

@@ -12,7 +12,7 @@ html {
 	display: flex;
 	flex-direction: column;
 	height: 100vh;
-	padding: 16px;
+	padding: 4px;
 }
 .form {
 	display: flex;
@@ -46,7 +46,7 @@ html {
 .tabs {
 	display: flex;
 	gap: 4px;
-	margin: 16px 0 4px;
+	margin: 0 0 4px;
 	padding: 0;
 	list-style: none;
 }
@@ -58,7 +58,10 @@ html {
 	background: #ddd;
 }
 .list-tab {
-	flex: 0 0 200px;
+	flex: 0 0 80px;
+}
+.list-tab.tab-active {
+	flex: 0 0 160px;
 }
 .tab-button-wrapper {
 	flex: 0 1 100%;
@@ -166,14 +169,17 @@ html {
 }
 .editor {
 	display: flex;
+	height: 100%;
 }
 .files-wrapper {
 	position: relative;
 	flex: 0 1 100%;
-	height: calc(100vh - 126px);
 	overflow-y: scroll;
 	z-index: 1;
 	background: #222;
+}
+.files-wrapper-before {
+	background: linear-gradient(to left, #ddd2, #222 16px);
 }
 .file {
 	flex: 0 0 auto;
@@ -184,7 +190,7 @@ html {
 	resize: none;
 	color: #ddd;
 	white-space: pre;
-	background: #222;
+	background: transparent;
 	overflow: hidden;
 	border: none;
 	outline: none;
@@ -203,8 +209,8 @@ html {
 
 .import-list,
 .export-list {
-	flex: 0 0 200px;
-	padding: 0 10px;
+	flex: 0 0 160px;
+	padding: 0 4px;
 	border-radius: 4px;
 	background: #ddd;
 }
@@ -232,6 +238,13 @@ html {
 	padding: 0;
 	border: none;
 	background: none;
+}
+.file-button {
+	padding: 2px 6px;
+}
+.file-item-active .file-button {
+	color: #ddd;
+	background: #222;
 }
 
 .file-header {

@@ -1,4 +1,5 @@
 import { state, storeSession } from '.';
+import { closeReference } from './file';
 
 const { createState } = window.stew;
 
@@ -122,13 +123,14 @@ function createTree (depthMap, type) {
 	return sortedFolder;
 }
 
-function renderFolder (folder, type) {
+function renderFolder (folder, type, activePaths, activeTab) {
 	const { path, name, modules = [], folders, files } = folder;
+	const [{ index: activePathIndex }] = activeTab;
 	const listState = type === 'imports' ? importState : exportState;
 	const { expandedFolders } = listState;
 	const isExpanded = expandedFolders[path];
 	const loadReference = type === 'imports' ? loadImport : loadExport;
-	
+
 	return ['', null,
 		name && ['button', {
 			className: 'folder-button',
@@ -160,17 +162,27 @@ function renderFolder (folder, type) {
 				return ['li', {
 					className: 'folder-item',
 				},
-					renderFolder(folder, type),
+					renderFolder(folder, type, activePaths, activeTab),
 				];
 			}),
 			...files.map(name => {
+				const filePath = `${path}${name}`;
+				const isActive = activePaths.indexOf(filePath) !== -1;
+
 				return ['li', {
-					className: 'file-item',
+					className: `file-item ${isActive ? 'file-item-active' : ''}`,
 				},
 					['button', {
 						className: 'file-button',
 						type: 'button',
-						onclick: () => loadReference(`${path}${name}`),
+						onclick: () => {
+							if (isActive) {
+								const fileIndex = activePaths.indexOf(filePath) + (type === 'imports' ? 0 : activePathIndex + 1);
+								closeReference(activeTab, fileIndex);
+							} else {
+								loadReference(filePath);
+							}
+						},
 					}, name],
 				]
 			}),
@@ -178,12 +190,14 @@ function renderFolder (folder, type) {
 	];
 }
 
-export function renderList (levels, type, showSettings) {
+export function renderList (levels, type, showSettings, activeTab) {
 	if (!levels) {
 		return null;
 	}
-	
+
 	const listState = type === 'imports' ? importState : exportState;
+	const [{ index: activePathIndex }] = activeTab;
+	const activePaths = type === 'imports' ? activeTab.slice(1, activePathIndex + 1) : activeTab.slice(activePathIndex + 2);
 
 	return memo => {
 		const { isExtended } = listState;
@@ -206,7 +220,7 @@ export function renderList (levels, type, showSettings) {
 					['label', { className: 'list-setting-label' }, 'Recursive Scan'],
 				],
 			],
-			renderFolder(rootFolder, type),
+			renderFolder(rootFolder, type, activePaths, activeTab),
 		];
 	};
 }
