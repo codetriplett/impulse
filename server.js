@@ -13,7 +13,10 @@ const resources = {
 	'favicon.ico': 'src/favicon.ico',
 	'index.html': 'src/index.html',
 	'index.css': 'src/index.css',
-	'index.min.js': 'dist/impulse.min.js',
+	'index.min.js': 'dist/index.js',
+	'acorn.min.js': 'node_modules/acorn/dist/acorn.js',
+	'acorn-jsx.min.js': 'node_modules/acorn-jsx/index.js',
+	'acorn-jsx-xhtml.min.js': 'node_modules/acorn-jsx/xhtml.js',
 	'stew.min.js': 'node_modules/@triplett/stew/dist/stew.min.js',
 	'stew.min.js.LEGAL.txt': 'node_modules/@triplett/stew/dist/stew.min.js.LEGAL.txt',
 };

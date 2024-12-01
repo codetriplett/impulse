@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "test": "jest --watch",
-    "build": "esbuild src/index.js --bundle --minify --watch --external:stew --outfile=dist/impulse.min.js",
+    "build": "node build.mjs",
     "start": "node server.js"
   },
   "author": "triplett",
@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@triplett/stew": "^3.4.0",
-    "acorn": "^8.14.0"
+    "acorn": "^8.14.0",
+    "acorn-jsx": "^5.3.2"
   }
 }

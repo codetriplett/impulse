@@ -244,4 +244,46 @@ describe('parseHeader', () => {
 			},
 		});
 	});
+
+	it('parses JSX', () => {
+		const map = {};
+
+		const actual = parseHeader(`
+			import main from './file';
+			const paragraph = <p>Paragraph</p>;
+		`, map, ['root']);
+
+		expect(actual).toEqual({
+			'/file': {
+				default: 'main',
+			},
+		});
+
+		expect(map).toEqual({
+			'/file': {
+				default: new Set(['/root']),
+			},
+		});
+	});
+
+	it.skip('parses TS', () => {
+		const map = {};
+
+		const actual = parseHeader(`
+			import main from './file';
+			const text: string = 'abc';
+		`, map, ['root']);
+
+		expect(actual).toEqual({
+			'/file': {
+				default: 'main',
+			},
+		});
+
+		expect(map).toEqual({
+			'/file': {
+				default: new Set(['/root']),
+			},
+		});
+	});
 });

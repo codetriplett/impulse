@@ -1,5 +1,5 @@
 import parseHeader, { cleanMap } from './parse';
-import { state, refs, getTab, getPath, storeSession } from '.';
+import { state, refs, getPath, storeSession } from '.';
 
 const { onRender } = window.stew;
 
@@ -126,7 +126,11 @@ function renderFiles (tab, placement, paths, type, isBefore) {
 							spellcheck: false,
 							readOnly: fileIndex !== activePathIndex,
 							ref,
-							onpaste: () => saveChange(ref, path, fileIndex),
+							onpaste: () => {
+								setTimeout(() => {
+									saveChange(ref, path, fileIndex);
+								}, 0);
+							},
 						}],
 					],
 				];

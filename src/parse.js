@@ -1,4 +1,7 @@
-import { parse } from 'acorn';
+import { Parser } from 'acorn';
+import jsx from 'acorn-jsx';
+
+const jsxExt = jsx.default();
 
 const options = {
 	ecmaVersion: 'latest',
@@ -63,7 +66,7 @@ export function cleanMap (path, node, map) {
 }
 
 export default function parseHeader (code, map, rootFolders) {
-	const { body } = parse(code, options);
+	const { body } = Parser.extend(jsxExt).parse(code, options);
 	const node = {};
 	const rootPath = `/${rootFolders.join('/')}`;
 
