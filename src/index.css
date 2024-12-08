@@ -223,15 +223,21 @@ html {
 	border-top-right-radius: 0;
 }
 .folder {
+	margin: 6px 0 0;
 	padding: 0;
 	list-style: none;
 }
 .folder .folder {
+	margin: 0;
 	display: none;
 	padding-left: 16px;
 }
+.folder-item + .file-item {
+	margin-top: 4px;
+}
 .folder .folder-expanded {
 	display: block;
+	margin-top: 4px;
 }
 .module-button,
 .file-button {

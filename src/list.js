@@ -147,7 +147,7 @@ function renderFolder (folder, type, activePaths, activeTab) {
 		},
 			...modules.map(name => {
 				return ['li', {
-					className: 'module-item',
+					className: 'list-item module-item',
 				},
 					['button', {
 						className: 'module-button',
@@ -160,7 +160,7 @@ function renderFolder (folder, type, activePaths, activeTab) {
 			}),
 			...folders.map(folder => {
 				return ['li', {
-					className: 'folder-item',
+					className: 'list-item folder-item',
 				},
 					renderFolder(folder, type, activePaths, activeTab),
 				];
@@ -170,7 +170,7 @@ function renderFolder (folder, type, activePaths, activeTab) {
 				const isActive = activePaths.indexOf(filePath) !== -1;
 
 				return ['li', {
-					className: `file-item ${isActive ? 'file-item-active' : ''}`,
+					className: `list-item file-item ${isActive ? 'file-item-active' : ''}`,
 				},
 					['button', {
 						className: 'file-button',

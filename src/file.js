@@ -1,7 +1,7 @@
-import parseHeader, { cleanMap } from './parse';
-import { state, refs, getPath, storeSession } from '.';
-
-const { onRender } = window.stew;
+import { onRender } from '@triplett/stew';
+import { parse } from './parse';
+import { updateMap } from './map';
+import { state, refs, storeSession } from '.';
 
 let fileRefs = [];
 
@@ -14,35 +14,6 @@ export function createFile () {
 export function loadFile (path) {
 	const { files } = state;
 	state.file = files[path];
-}
-
-export function saveFile () {
-	const { nodes, files, map } = state;
-	const { codeRef } = refs;
-	const [codeInput] = codeRef;
-	const folders = path.slice(1).split('/');
-	const file = codeInput.value;
-	const path = getPath();
-	let node = nodes[path];
-
-	if (node) {
-		cleanMap(path, node, map);
-	}
-
-	state.file = file;
-	files[path] = file;
-	window.localStorage.setItem('files', JSON.stringify(files));
-
-	node = parseHeader(file, map, folders);
-	nodes[path] = node;
-	window.localStorage.setItem('project', JSON.stringify(nodes));
-
-	Object.assign(state, {
-		nodes: {
-			...nodes,
-			[path]: node
-		},
-	});
 }
 
 function resizeChange (i) {
@@ -75,13 +46,16 @@ export function closeReference (tab, i) {
 function saveChange (ref, path, i) {
 	const { nodes, files, map } = state;
 	const [input] = ref;
-	const folders = path.slice(1).split('/');
-	const file = input.value;
+	const text = input.value;
+	const type = path.match(/(?:\.([a-z]+))$/).slice(1);
 	let node = nodes[path];
-	
-	node = parseHeader(file, map, folders);
-	files[path] = input.value;
-	nodes[path] = node;
+
+	if (!node) {
+		node = parse(text, type);
+		updateMap(map, path, node);
+		files[path] = text;
+		nodes[path] = node;
+	}
 
 	Object.assign(state, {
 		files: { ...files },

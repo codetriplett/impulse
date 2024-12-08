@@ -140,7 +140,12 @@ function getExports (path, depthMap = {}, depth = 0, rootPath) {
 }
 
 function loadPath () {
-	const { hash } = window.location;
+	const { href, hash } = window.location;
+
+	if (!hash && !href.endsWith('#')) {
+		return;
+	}
+
 	const { files, tabs } = state;
 	const path = hash.slice(1);
 	const tabIndex = tabs.length - 1;
