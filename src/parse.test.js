@@ -2,24 +2,25 @@ const { parseJS, parseMD, parse } = require('./parse');
 
 describe('parseJS', () => {
 	it('parses default import', () => {
-		const map = {};
-
-		const actual = parseJS(`
-			import main from './file';
-		`, map, ['root']);
+		const actual = parseJS(
+`import main from './file';
+export const local = main;`);
 
 		expect(actual).toEqual({
-			'/file': {
-				default: 'main',
+			'./file': {
+				default: [0],
 			},
-		});
-
-		expect(map).toEqual({
-			'/file': {
-				default: new Set(['/root']),
+			'': {
+				local: [0, 0],
+				'': [0],
 			},
 		});
 	});
+
+
+
+
+
 	
 	it('parses named import', () => {
 		const map = {};
@@ -261,17 +262,11 @@ describe('parseJS', () => {
 	});
 });
 
-describe('parseMD', () => {
+describe.only('parseMD', () => {
 	// refernce links are a part of the markdown syntax
 	// - these should be stored in the area before the first heading, similar to JS files
 	//   - cuts down on processing of entire file
 	// - these are then used in MD as [Text][label]
-	it.only('parses default reference', () => {
-		const actual = parse(
-`[main]: ./file
-# Header {#local}
-[Main Label][main]`
-		, 'md');
 
 		/*
 			// this goal should be a condensed set of links and line references that can be used to focus imports/exports in editor
@@ -325,101 +320,142 @@ describe('parseMD', () => {
 			// - both can now use map, instead of one of them using individual nodes
 		*/
 
-		expect(actual).toEqual(['md', {
+
+
+
+
+		// and array where an object is expected is the same as { '': [] }
+		/* ['md', {
 			'./file': {
-				main: [0],
+				main: [...refs], // refs that rely on this import
+				'': [...refs], // refs that rely on an all (* as) import
 			},
-			'': {
-				local: 0,
-			},
+			'': [...refs], // refs that export
 		},
-			[0, 0],
-		]);
-	});
+			[0, 0, ...refs], // start and end index, and the other refs it depends on
+		] */
 
-	it('parses named reference', () => {
-		const map = {};
 
-		const actual = parseMD(`
-[other]: ./file#other
+
+		/* {
+			// import
+			'./file': {
+				main: [0, 0, ...refs], // start and end index, followed by indexes of locals refs that rely on this import
+				'': [0, 0, ...refs], // same as above, but for a '* as' type of import 
+			}
+			// locals/exports
+			'': {
+				'Label': [0, 0, ...refs], // start and end index, followed by indexes of other locals it relies on
+				'': [0, 0, ...refs], // export. most of the time it is just used to mark which locals export. If left out, all locals export
+			}
+		} */
+		// use start index as ref index
+		// allow the space above the first headline hold a summary and metadata section for the whole file, imported with a name of just #
+
+	it('parses default reference', () => {
+		const actual = parseMD(
+`[main]: ./file#
 # Header {#local}
-[Other Label][other]
-		`, map, ['root']);
+[Main Label][main]`);
 
 		expect(actual).toEqual({
-			'/file': {
-				other: ['local']
+			'./file': {
+				'': [0, 15, 16],
+			},
+			'': {
+				'local': [16, 52],
+				'': [0, 16, 16],
 			},
 		});
-		
-		expect(map).toEqual({
-			'/file': {
-				other: {
-					'/root': ['local'],
-				}
+	});
+	
+	it('parses named reference', () => {
+		const actual = parseMD(
+`[other]: ./file#other
+# Header {#local}
+[Other Label][other]`);
+
+		expect(actual).toEqual({
+			'./file': {
+				other: [0, 21, 22],
 			},
-			'/root': {
-				local: {},
+			'': {
+				'local': [22, 60],
+				'': [0, 22, 22],
 			},
 		});
 	});
 
 	it('parses aliased reference', () => {
-		const map = {};
-
-		const actual = parseMD(`
-[alias]: ./file#another
+		const actual = parseMD(
+`[alias]: ./file#another
 # Header {#local}
-[Alias Label][alias]
-		`, map, ['root']);
+[Alias Label][alias]`);
 
 		expect(actual).toEqual({
-			'/file': {
-				another: ['local'],
+			'./file': {
+				another: [0, 23, 24],
 			},
-		});
-		
-		expect(map).toEqual({
-			'/file': {
-				another: {
-					'/root': ['local'],
-				}
-			},
-			'/root': {
-				local: {},
-			},
-		});
-	});
-	
-	it('parses tag', () => {
-		const map = {};
-
-		const actual = parseMD(`
-# Header {#local}
-#tag
-		`, map, ['root']);
-
-		expect(actual).toEqual({
-			'/': {
-				tag: ['local'],
-			},
-		});
-		
-		expect(map).toEqual({
-			'/': {
-				tag: {
-					'/root': ['local'],
-				}
-			},
-			'/root': {
-				local: {},
+			'': {
+				'local': [24, 62],
+				'': [0, 24, 24],
 			},
 		});
 	});
 
-	// allow for #tags, which are global to project
-	// - these are similar to external modules in JS
-	// - these are allowed throughout content, not just in header
+	it('parses local reference', () => {
+		const actual = parseMD(
+`[local]: #local
+# Header {#local}
+[Local Label][local]`);
+
+		expect(actual).toEqual({
+			'.': {
+				local: [0, 15, 16],
+			},
+			'': {
+				'local': [16, 54],
+				'': [0, 16, 16],
+			}
+		});
+	});
+
+	it('parses reference in top section', () => {
+		const actual = parseMD(
+`[main]: ./file#
+[Meta Label][main]
+# Header {#local}`);
+
+		expect(actual).toEqual({
+			'./file': {
+				'': [0, 15, 0],
+			},
+			'': {
+				'local': [35, 52],
+				'': [0, 35, 35],
+			},
+		});
+	});
+
+	it('parses multiple headers', () => {
+		const actual = parseMD(
+`[main]: ./file#
+# Header {#first}
+[Main Label][main]
+# Header {#second}
+[Main Label][main]`);
+
+		expect(actual).toEqual({
+			'./file': {
+				'': [0, 15, 16, 53],
+			},
+			'': {
+				'first': [16, 53],
+				'second': [53, 90],
+				'': [0, 16, 16, 53],
+			},
+		});
+	});
 });
 
 describe('parse', () => {

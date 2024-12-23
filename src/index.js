@@ -1,4 +1,4 @@
-import { buildMap } from './parse';
+// import { buildMap } from './parse';
 import { renderList } from './list';
 import { renderTab } from './file';
 import { renderMenu } from './menu';
@@ -11,7 +11,6 @@ export const state = createState({
 	exports: [],
 	nodes: {},
 	files: {},
-	map: {},
 	showImports: true,
 	showExports: true,
 	showImportSettings: false,
@@ -29,8 +28,7 @@ export function recallSession () {
 	}
 
 	const { tabs = [{ index: 0, name: 'Impulse', scroll: 0 }], nodes = {}, files = {} } = impulse;
-	const map = buildMap(nodes);
-	Object.assign(state, { tabs, nodes, files, map });
+	Object.assign(state, { tabs, nodes, files });
 }
 
 export function storeSession () {
@@ -95,15 +93,22 @@ function getImports (path, depthMap = {}, depth = 0, rootPath) {
 		rootPath = path;
 	}
 
-	const names = Object.keys(node);
+	const { '': locals, ...imports } = node;
+	const paths = Object.keys(imports);
+	const nextDepth = depth + 1;
+	const newPaths = [];
 
-	for (const name of names) {
-		if (name === rootPath || depthMap[name] !== undefined) {
+	for (const path of paths) {
+		if (path === rootPath || depthMap[path] !== undefined) {
 			continue;
 		}
 
-		depthMap[name] = depth;
-		getImports(name, depthMap, depth + 1, rootPath);
+		depthMap[path] = depth;
+		newPaths.push(path);
+	}
+
+	for (const path of newPaths) {
+		getImports(path, depthMap, nextDepth, rootPath);
 	}
 
 	if (Object.keys(depthMap).length === 0) {
@@ -114,26 +119,33 @@ function getImports (path, depthMap = {}, depth = 0, rootPath) {
 }
 
 function getExports (path, depthMap = {}, depth = 0, rootPath) {
-	const { map } = state;
-	const location = map[path];
+	const { nodes } = state;
+	const node = nodes[path];
 
-	if (!location) {
+	if (!node) {
 		return;
 	}
 
 	if (!rootPath) {
 		rootPath = path;
 	}
+	
+	const { '': locals } = node;
+	const paths = new Set(Object.values(locals).map(array => array.filter(it => typeof it === 'string')).flat());
+	const nextDepth = depth + 1;
+	const newPaths = [];
 
-	for (const set of Object.values(location)) {
-		for (const name of set) {
-			if (name === rootPath || depthMap[name] !== undefined) {
-				continue;
-			}
-
-			depthMap[name] = depth;
-			getExports(name, depthMap, depth + 1, rootPath);
+	for (const path of paths) {
+		if (path === rootPath || depthMap[path] !== undefined) {
+			continue;
 		}
+
+		depthMap[path] = depth;
+		newPaths.push(path);
+	}
+
+	for (const path of newPaths) {
+		getExports(path, depthMap, nextDepth, rootPath);
 	}
 
 	return depthMap;

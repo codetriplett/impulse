@@ -21,87 +21,102 @@ export function getPath (rootPath, relativePath) {
 
 export function clearNode (map, path) {
 	const existingNode = map[path];
-	const exports = {};
+	const exportPaths = {};
 	let hasExports = false;
 
 	if (existingNode) {
-		const existingRef = existingNode[1];
-		const { '': existingExports, ...existingImports } = existingRef;
+		const { '': existingLocals, ...existingImports } = existingNode;
 
 		for (const [importPath, existingImport] of Object.entries(existingImports)) {
 			const importNode = map[importPath];
-			const importRef = importNode[1];
-			const { '': exports } = importRef;
+			const { '': locals } = importNode;
 			const names = Object.keys(existingImport);
 
 			for (const name of names) {
-				const array = exports[name];
+				const array = locals[name];
+
+				if (!array) {
+					continue;
+				}
+
 				const index = array.indexOf(path);
 
-				if (index <= 0) {
+				if (index < 0) {
 					continue;
 				}
 				
 				array.splice(index, 1);
-				
-				if (array.length === 1 && array[0] < 0) {
-					delete exports[name];
+
+				if (array.length === 0) {
+					delete locals[name];
 				}
 			}
 
-			if (Object.keys(exports).length === 0 && Object.keys(importRef).length < 2) {
+			if (Object.keys(locals).length < 2 && locals[''].length === 0 && Object.keys(importNode).length < 2) {
 				delete map[importPath];
 			}
 		}
 
-		for (const [name, array] of Object.entries(existingExports)) {
-			const paths = array.slice(1);
+		for (const [name, array] of Object.entries(existingLocals)) {
+			const paths = array.filter(it => typeof it === 'string');
 
 			if (paths.length) {
-				exports[name] = [-1, ...paths];
+				exportPaths[name] = paths;
 				hasExports = true;
 			}
 		}
 	}
 
 	if (hasExports) {
-		map[path] = ['', { '': exports }];
-		return exports;
+		if (!exportPaths['']) {
+			exportPaths[''] = [];
+		}
+
+		map[path] = { '': exportPaths };
+		return exportPaths;
 	}
-	
+
 	delete map[path];
 }
 
-export function updateMap (map, path, templateNode) {
-	const wrappedExports = clearNode(map, path) || {};
+export function updateNode (map, path, templateNode) {
+	const exportPaths = clearNode(map, path) || {};
 
 	if (!templateNode) {
 		return;
 	}
 
 	const folders = path.slice(1).split('/');
-	const [type, refs, ...locals] = templateNode;
-	const { '': newExports = {}, ...relativeImports } = refs;
+	const { '': locals, ...relativeImports } = templateNode;
 	const absoluteImports = {};
 
 	for (const [relativePath, importObject] of Object.entries(relativeImports)) {
 		const sourcePath = getPath(folders, relativePath);
-		const mapNode = getObject(map, sourcePath, ['', { '': {} }]);
-		const mapExports = mapNode[1][''];
+		const mapNode = getObject(map, sourcePath, { '': { '': [] } });
+		const mapExports = mapNode[''];
 		absoluteImports[sourcePath] = importObject;
 
 		for (const name of Object.keys(importObject)) {
-			const exportArray = getObject(mapExports, name, [-1]);
+			const exportArray = getObject(mapExports, name, []);
 			exportArray.push(path);
 		}
 	}
 
-	for (const [name, value] of Object.entries(newExports)) {
-		const array = getObject(wrappedExports, name, [-1]);
-		array[0] = value;
+	for (const [name, array] of Object.entries(locals)) {
+		const relativePaths = exportPaths[name];
+
+		if (!relativePaths) {
+			continue;
+		}
+
+		const absolutePaths = relativePaths.map(path => getPath(folders, path));
+
+		if (absolutePaths) {
+			array.push(...absolutePaths);
+		}
 	}
 
-	const newRefs = { ...absoluteImports, '': wrappedExports };
-	const node = [type, newRefs, ...locals];
+	const node = { ...absoluteImports, '': locals };
 	map[path] = node;
+	return node;
 }

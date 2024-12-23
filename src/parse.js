@@ -1,148 +1,289 @@
+import { parse as parseMDtoAST } from '@textlint/markdown-to-ast';
 import { Parser } from 'acorn';
 import jsx from 'acorn-jsx';
 import { getObject } from './common';
 
-const jsxExt = jsx();
+const jsxExt = jsx.default();
+// const jsxExt = jsx();
 
 const options = {
 	ecmaVersion: 'latest',
 	sourceType: 'module',
 };
 
-export function cleanMap (map, path) {
-	for (const [name, imports] of Object.entries(node)) {
-		const location = map[name];
+// export function cleanMap (map, path) {
+// 	for (const [name, imports] of Object.entries(node)) {
+// 		const location = map[name];
 
-		for (const name in imports) {
-			location[name].delete(path)
-		}
-	}
+// 		for (const name in imports) {
+// 			location[name].delete(path)
+// 		}
+// 	}
+// }
+
+// export function buildMap (nodes) {
+// 	const map = {};
+
+// 	for (const [rootPath, imports] of Object.entries(nodes)) {
+// 		for (const [sourcePath, exports] of Object.entries(imports)) {
+// 			let mapLocation = map[sourcePath];
+
+// 			if (!mapLocation) {
+// 				mapLocation = {};
+// 				map[sourcePath] = mapLocation;
+// 			}
+
+// 			for (const importedName in exports) {
+// 				let mapEntry = mapLocation[importedName];
+
+// 				if (!mapEntry) {
+// 					mapEntry = new Set();
+// 					mapLocation[importedName] = mapEntry;
+// 				}
+
+// 				mapEntry.add(rootPath);
+// 			}
+// 		}
+// 	}
+
+// 	return map;
+// }
+
+function processNode (node, imports, locals, exports) {
+	const { type } = node;
+
+	// switch (type) {
+	// 	case ''
+	// }
 }
 
-export function buildMap (nodes) {
-	const map = {};
-
-	for (const [rootPath, imports] of Object.entries(nodes)) {
-		for (const [sourcePath, exports] of Object.entries(imports)) {
-			let mapLocation = map[sourcePath];
-
-			if (!mapLocation) {
-				mapLocation = {};
-				map[sourcePath] = mapLocation;
-			}
-
-			for (const importedName in exports) {
-				let mapEntry = mapLocation[importedName];
-
-				if (!mapEntry) {
-					mapEntry = new Set();
-					mapLocation[importedName] = mapEntry;
-				}
-
-				mapEntry.add(rootPath);
-			}
-		}
-	}
-
-	return map;
-}
-
-function parseJS (text) {
+export function parseJS (text) {
 	const { body } = Parser.extend(jsxExt).parse(text, options);
 	const imports = {};
-	const refs = {};
-	const rootPath = `/${folders.join('/')}`;
+	const importRefs = {};
 
-	console.log(body);
+	for (const node of body) {
+		const { start, end, type } = node;
+
+		// TODO: need to include for and if defintions as locals
+		// - these should be shown when focusing a line within them
+		// - an if ref that references another if ref, means it's an else if
+
+		switch (type) {
+			case 'ImportDeclaration': {
+				const { specifiers, source } = node;
+				const sourceValue = source.value;
+				const importObject = getObject(imports, sourceValue, {});
+
+				for (const node of specifiers) {
+					const { type, local } = node;
+					const localName = local.name;
+					let sourceName;
+					
+					if (type === 'ImportDefaultSpecifier') {
+						sourceName = 'default';
+					}
+
+					const importArray = getObject(importObject, sourceName, []);
+					importRefs[localName] = importArray;
+				}
+
+				break;
+			}
+			case 'ExportNamedDeclaration': {
+				const { declaration } = node;
+				const { type } = declaration;
+
+				switch (type) {
+					case 'VariableDeclaration': {
+						const { declarations } = declaration;
+						break;
+					}
+				}
+
+				break;
+			}
+			default: {
+				console.log('========', type);
+				break;
+			}
+		}
+	}
+
+	console.log(imports);
 
 	return imports;
 }
 
-export function parseMD (text) {
-	const references = text.match(/\[.*?\]: +.*/g) || [];
-	const tags = `\n${text.trim()}\n`.match(/\s#\S+(?!\})/g) || [];
-	const sections = `\n${text.trim()}\n`.split(/(?=\n#+ )/) || [];
-	const hasMain = text.search(/(^|(\s*\n))#/) > 0;
-	const imports = {};
-	const exports = {};
-	const locals = [];
-	const refs = {};
+function processHeaderId (header) {
+	const { children } = header;
+	const lastChild = children[children.length - 1];
+	const { type, loc, range, value } = lastChild;
 
-	if (hasMain) {
-		sections.shift().trim();
+	if (type !== 'Str') {
+		return;
+	}
+	
+	const [suffix, id] = value.match(/\s*\{#(.*?)\}\s*$/) || [];
+
+	if (!suffix) {
+		return;
 	}
 
-	for (const string of tags) {
-		const tag = string.slice(2);
-		references.push(`[${tag}]: #${tag}`);
-	}
+	const { end } = loc;
+	const { length } = suffix;
+	lastChild.raw = value.slice(0, -length);
+	lastChild.value = value.slice(0, -length);
+	end.column -= length;
+	range[1] -= length;
 
-	// create helper that covers the similarity in code between JS and MD
-	// - maybe parse to AST here that matches types and prop names used by JS, then pass AST to common resolver
-	// - also add helper for the inserting of default object/array if it hasn't yet been added, before adding items to it
-	for (const reference of references) {
-		let [alias, path, name] = reference.match(/\[(.*?)\]: +(.*?)(?:#(.*))?$/).slice(1);
-		const sourcePath = path || '/';
-		const importObject = getObject(imports, sourcePath, {});
+	children.push({
+		loc: {
+			start: {
+				line: end.line,
+				column: end.column + suffix.indexOf('{'),
+			},
+			end: {
+				line: end.line,
+				column: end.column + suffix.lastIndexOf('}') + 1,
+			},
+		},
+		range: [
+			range[1] + suffix.indexOf('{'),
+			range[1] + suffix.lastIndexOf('}') + 1,
+		],
+		raw: suffix.trim(),
+		type: 'Id',
+		value: id,
+	});
 
-		if (!name) {
-			name = alias;
+	return id;
+}
+
+// function processText (node) {
+// 	const { children } = node;
+// 	let text = '';
+
+// 	for (const node of children) {
+// 		const { type } = node;
+
+// 		switch (type) {
+// 			case 'Link': {
+// 				text += processText(node);
+// 				break;
+// 			}
+// 			case 'Str': {
+// 				text += node.value;
+// 				break;
+// 			}
+// 		}
+// 	}
+
+// 	return text;
+// }
+
+function findByType (candidateNodes, expectedType) {
+	const foundNodes = [];
+
+	for (const candidateNode of candidateNodes) {
+		const { type, children = [] } = candidateNode;
+
+		if (type === expectedType) {
+			foundNodes.push(candidateNode);
 		}
 
-		const importArray = getObject(importObject, name, []);
-		refs[alias] = importArray;
+		const additionalNodes = findByType(children, expectedType);
+		foundNodes.push(...additionalNodes);
 	}
 
-	for (const section of sections) {
-		const [name, content] = section.match(/#+ +.+? *(?:\{#(.*?)\})?\n+(.*)\n*/).slice(1);
+	return foundNodes;
+}
 
-		if (!name) {
+// TODO 1) store # chain on paths in locals arrays
+// TODO 2) allow number prefixes and suffixes on hash values as an attribute
+// - e.g. abc123 (item '123' within 'abc' group)
+// - a number prefix can also be included
+// - e.g. 0type123 (subitem '0' within abc123)
+// - when resolving a hash...
+//   - first try to find an exact match
+//   - then a match with the prefix removed
+//     - if found, add subitem to found item
+//   - then a match with the suffix removed as well
+//     - if found, add item (and subitem if needed) to group
+export function parseMD (text) {
+	const tree = parseMDtoAST(text);
+	const { children } = tree;
+	const imports = {};
+	const locals = {};
+	const exports = [0, 0];
+	const importRefs = {};
+	const localRefs = {};
+	let prevStart = text.length;
+
+	const definitionNodes = findByType(children, 'Definition');
+	const headerNodes = findByType(children, 'Header').reverse();
+	const referenceNodes = findByType(children, 'LinkReference').reverse();
+
+	for (const node of definitionNodes) {
+		const { range, label, url } = node;
+		const match = url.match(/^([./].*?)?(?:#(.*))$/);
+
+		if (importRefs[label] || !match) {
 			continue;
 		}
 
-		// TODO: rewrite this to be a while loop that searches for next header
-		// - this way it will know its position to mark the start and finish character indexes
-		const index = locals.length;
-		locals.push([0, 0]);
-		exports[name] = index;
-
-		const references = content.match(/\[.*?\]\[.+?\]/g) || [];
-		const tags = `\n${content.trim()}\n`.match(/[^{]#\S+(?!\})/g) || [];
-
-		for (const string of tags) {
-			const tag = string.slice(2);
-			references.push(`[][${tag}]`);
-		}
-
-		for (const reference of references) {
-			const [alias] = reference.match(/\[.*?\]\[(.+?)\]/).slice(1);
-			refs[alias]?.push?.(index);
-		}
+		const [path = '.', name] = match.slice(1);
+		const importObject = getObject(imports, path, {});
+		const importArray = getObject(importObject, name, range.slice(0, 2));
+		importRefs[label] = importArray;
 	}
 
-	imports[''] = exports;
-	return [imports, ...locals];
+	for (const node of headerNodes) {
+		const { range } = node;
+		const rangeStart = range[0];
+		const referenceIndex = referenceNodes.findIndex(({ range }) => range[0] < rangeStart);
+		const referenceCount = referenceIndex === -1 ? referenceNodes.length : referenceIndex;
+		const containedReferences = referenceNodes.splice(0, referenceCount);
+		const id = processHeaderId(node);
+		// headerText = processText(node);
+
+		if (id) {
+			const localArray = [rangeStart, prevStart];
+			localRefs[id] = localArray;
+			locals[id] = localArray;
+			exports.splice(2, 0, rangeStart);
+		}
+
+		for (const node of containedReferences) {
+			const { label } = node;
+			importRefs[label].splice(2, 0, rangeStart);
+		}
+
+		prevStart = rangeStart;
+	}
+
+	exports[1] = prevStart;
+
+	for (const node of referenceNodes) {
+		const { label } = node;
+		importRefs[label].push(0);
+	}
+
+	return { ...imports, '': { ...locals, '': exports } };
 }
 
 // TODO: allow override parse and render functions when running the CLI command
 // - can put path to file that module.exports overrides after impulse command
 // - onParse and onRender can also be added to modify the default results from here
 export function parse (text, type) {
-	let node;
-
 	switch (type) {
 		case 'js': {
-			node = parseJS(text);
-			break;
+			return parseJS(text);
 		}
 		case 'md': {
-			node = parseMD(text);
-			break;
+			return parseMD(text);
 		}
 	}
-
-	node.unshift(type);
-	return node;
 }
 
 

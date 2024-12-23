@@ -1,6 +1,6 @@
 import { onRender } from '@triplett/stew';
 import { parse } from './parse';
-import { updateMap } from './map';
+import { updateNode } from './map';
 import { state, refs, storeSession } from '.';
 
 let fileRefs = [];
@@ -44,18 +44,14 @@ export function closeReference (tab, i) {
 }
 
 function saveChange (ref, path, i) {
-	const { nodes, files, map } = state;
+	const { nodes, files } = state;
 	const [input] = ref;
 	const text = input.value;
-	const type = path.match(/(?:\.([a-z]+))$/).slice(1);
-	let node = nodes[path];
-
-	if (!node) {
-		node = parse(text, type);
-		updateMap(map, path, node);
-		files[path] = text;
-		nodes[path] = node;
-	}
+	const type = path.match(/(?:\.([a-z]+))?$/)[1] || 'md';
+	const node = parse(text, type);
+	const processedNode = updateNode(nodes, path, node);
+	files[path] = text;
+	nodes[path] = processedNode;
 
 	Object.assign(state, {
 		files: { ...files },
@@ -66,7 +62,31 @@ function saveChange (ref, path, i) {
 	storeSession();
 }
 
-function renderFiles (tab, placement, paths, type, isBefore) {
+function focusImportFile (path, activePath) {
+	const { files, nodes } = state;
+	const file = files[path];
+	const { '': locals } = nodes[path];
+	const fragments = [];
+
+	for (const array of Object.values(locals)) {
+		if (array.indexOf(activePath) === -1) {
+			continue;
+		}
+
+		const [start, end] = array;
+		const fragment = file.slice(start, end);
+		fragments.push(fragment);
+	}
+
+	const text = fragments.join('\n');
+	return text;
+}
+
+function focusExportFile (path, activePath) {
+	return file;
+}
+
+function renderFiles (tab, placement, paths, type, isBefore, activePath) {
 	if (!paths.length) {
 		return;
 	}
@@ -85,29 +105,37 @@ function renderFiles (tab, placement, paths, type, isBefore) {
 				const fileIndex = indexOffset + i;
 				const ref = fileRefs[fileIndex];
 
-				return ['div', { className: 'file-wrapper' },
-					type !== 'main' && ['div', { className: 'file-header' },
-						['h2', { className: 'file-heading' }, path],
-						indexOffset !== activePathIndex && ['button', {
-							className: 'file-icon',
-							onclick: () => closeReference(tab, fileIndex),
-						}, '✕'],
-					],
-					['div', { className: 'textarea-wrapper' },
-						['textarea', {
-							className: 'file',
-							value: files[path],
-							spellcheck: false,
-							readOnly: fileIndex !== activePathIndex,
-							ref,
-							onpaste: () => {
-								setTimeout(() => {
-									saveChange(ref, path, fileIndex);
-								}, 0);
-							},
-						}],
-					],
-				];
+				return memo => {
+					if (type !== 'main' && memo.length === 0) {
+						memo[0] = type === 'imports' ? focusImportFile(path, activePath) : focusExportFile(path, activePath);
+					}
+
+					const value = type === 'main' ? files[path] : memo[0];
+
+					return ['div', { className: 'file-wrapper' },
+						type !== 'main' && ['div', { className: 'file-header' },
+							['h2', { className: 'file-heading' }, path],
+							indexOffset !== activePathIndex && ['button', {
+								className: 'file-icon',
+								onclick: () => closeReference(tab, fileIndex),
+							}, '✕'],
+						],
+						['div', { className: 'textarea-wrapper' },
+							['textarea', {
+								className: 'file',
+								value,
+								spellcheck: false,
+								readOnly: fileIndex !== activePathIndex,
+								ref,
+								onpaste: () => {
+									setTimeout(() => {
+										saveChange(ref, path, fileIndex);
+									}, 0);
+								},
+							}],
+						],
+					];
+				};
 			}),
 		],
 	];
@@ -128,11 +156,12 @@ export function renderTab (tab, placement) {
 
 		const importPaths = paths.slice(0, activePathIndex);
 		const exportPaths = paths.slice(activePathIndex + 1);
+		const activePath = paths[activePathIndex];
 
 		return ['', null,
-			renderFiles(tab, placement, importPaths, 'imports', true),
-			renderFiles(tab, placement, [paths[activePathIndex]], 'main', exportPaths.length > 0),
-			renderFiles(tab, placement, exportPaths, 'exports'),
+			renderFiles(tab, placement, importPaths, 'imports', true, activePath),
+			renderFiles(tab, placement, [activePath], 'main', exportPaths.length > 0),
+			renderFiles(tab, placement, exportPaths, 'exports', false, activePath),
 		];
 	};
 }

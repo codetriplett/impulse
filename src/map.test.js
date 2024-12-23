@@ -1,4 +1,4 @@
-import { getPath, clearNode, updateMap } from './map';
+import { getPath, clearNode, updateNode } from './map';
 
 describe('getPath', () => {
 	it('gets root path', () => {
@@ -30,77 +30,83 @@ describe('getPath', () => {
 describe('clearNode', () => {
 	it('clears unlinked node', () => {
 		const map = {
-			'/parent': ['md', {
+			'/parent': {
 				'': {
-					main: [0],
+					main: [0, 0],
+					'': [0, 0, 0],
 				},
-			}],
-			'/node': ['md', {
+			},
+			'/node': {
 				'': {},
-			}],
+			},
 		};
 
 		const actual = clearNode(map, '/node');
 		expect(actual).toEqual(undefined);
 
 		expect(map).toEqual({
-			'/parent': ['md', {
+			'/parent': {
 				'': {
-					main: [0],
+					main: [0, 0],
+					'': [0, 0, 0],
 				},
-			}],
+			},
 		});
 	});
 	
 	it('clears linked node', () => {
 		const map = {
-			'/parent': ['md', {
+			'/parent': {
 				'': {
-					main: [0, '/node'],
+					main: [0, 0, '/node'],
+					'': [0, 0, 0],
 				},
-			}],
-			'/node': ['md', {
+			},
+			'/node': {
 				'/parent': {
 					main: [0],
 				},
 				'': {
-					main: [0, '/child'],
-					other: [0],
+					main: [0, 0, '/child'],
+					other: [0, 0],
 				},
-			}],
+			},
 		};
 
 		const actual = clearNode(map, '/node');
 
 		expect(actual).toEqual({
-			main: [-1, '/child'],
+			main: ['/child'],
+			'': [],
 		});
 
 		expect(map).toEqual({
-			'/parent': ['md', {
+			'/parent': {
 				'': {
-					main: [0],
+					main: [0, 0],
+					'': [0, 0, 0],
 				},
-			}],
-			'/node': ['', {
+			},
+			'/node': {
 				'': actual,
-			}],
+			},
 		});
 	});
 	
 	it('clears unnecessary parent', () => {
 		const map = {
-			'/parent': ['md', {
+			'/parent': {
 				'': {
-					main: [-1, '/node'],
+					main: ['/node'],
+					'': [],
 				},
-			}],
-			'/node': ['md', {
+			},
+			'/node': {
 				'/parent': {
 					main: [0],
 				},
 				'': {},
-			}],
+			},
 		};
 
 		const actual = clearNode(map, '/node');
@@ -109,122 +115,148 @@ describe('clearNode', () => {
 	});
 });
 
-describe('updateMap', () => {
-	it('updates map at root', () => {
+// maybe index refs in separate object
+// - greatly simplifies parsing, since it just needs to replace itself in map, with no modifications
+// - allows function to stick to their own purpose
+// - no messy siturations when files reference a file that hasn't been parsed, or has been deleted
+
+// map (collection of parsed files)
+// - non-empty string keys are for imports
+// - entries under empty string key are locals, and empty string key in that is for exports
+// - refs refer to locals, and locals arrays start with the starting character index and length of their content
+/* {
+	'/file': {
+		'./sibling': {
+			main: [...refs], // refs that rely on this import (name is its true name, not its alias)
+			'': [...refs], // indicates an import all object
+		},
+		'': {
+			var: [index, length, ...refs], // declares local variable, along with array of other variables it depends on
+			'': [...refs], // refs that are exported from this file
+		},
+	},
+} */
+
+// refMap (index of relationships between files, derived from map if not yet built)
+/* {
+	'/sibling': {
+		main: [...paths], // paths of files that import this export (should this be relative?)
+	},
+} */
+
+describe('updateNode', () => {
+	it('updates node at root', () => {
 		const map = {
-			'/file': ['md', {
+			'/file': {
 				'': {
-					main: [0],
+					main: [1, 2],
+					'': [1],
 				},
-			}],
+			},
 		};
 
-		updateMap(map, '/root', ['md', {
+		updateNode(map, '/root', {
 			'./file': {
-				main: [0],
+				main: [1],
 			},
 			'': {
-				local: 0,
+				local: [1, 2],
+				'': [1],
 			},
-		},
-			[0, 0],
-		]);
+		});
 
 		expect(map).toEqual({
-			'/file': ['md', {
+			'/file': {
 				'': {
-					main: [0, '/root'],
-				},
-			}],
-			'/root': ['md', {
-				'/file': {
-					main: [0],
-				},
-				'': {
-					local: [0],
+					main: [1, 2, '/root'],
+					'': [1],
 				},
 			},
-				[0, 0],
-			],
+			'/root': {
+				'/file': {
+					main: [1],
+				},
+				'': {
+					local: [1, 2],
+					'': [1],
+				},
+			},
 		});
 	});
 
 	it('sets placeholders', () => {
 		const map = {};
 
-		updateMap(map, '/root', ['md', {
+		updateNode(map, '/root', {
 			'./file': {
-				main: [0],
+				main: [1, 2],
 			},
 			'': {
-				local: 0,
+				local: [1, 2],
+				'': [1],
 			},
-		},
-			[0, 0],
-		]);
+		});
 
 		expect(map).toEqual({
-			'/file': ['', {
+			'/file': {
 				'': {
-					main: [-1, '/root'],
-				},
-			}],
-			'/root': ['md', {
-				'/file': {
-					main: [0],
-				},
-				'': {
-					local: [0],
+					main: ['/root'],
+					'': [],
 				},
 			},
-				[0, 0],
-			],
+			'/root': {
+				'/file': {
+					main: [1, 2],
+				},
+				'': {
+					local: [1, 2],
+					'': [1],
+				},
+			},
 		});
 	});
 
-	it('updates map in folder', () => {
+	it('updates node in folder', () => {
 		const map = {};
 
-		const actual = updateMap(map, '/folder/file', ['md', {
+		updateNode(map, '/folder/file', {
 			'../shallow': {
-				main: [0]
+				main: [1]
 			},
 			'./deep': {
 				main: [1]
 			},
 			'': {
-				local: 0,
+				local: [1, 2],
+				'': [1],
 			}
-		},
-			[0, 0],
-			[1, 1],
-		]);
+		});
 
 		expect(map).toEqual({
-			'/shallow': ['', {
+			'/shallow': {
 				'': {
-					main: [-1, '/folder/file'],
+					main: ['/folder/file'],
+					'': [],
 				},
-			}],
-			'/folder/deep': ['', {
+			},
+			'/folder/deep': {
 				'': {
-					main: [-1, '/folder/file'],
+					main: ['/folder/file'],
+					'': [],
 				},
-			}],
-			'/folder/file': ['md', {
+			},
+			'/folder/file': {
 				'/shallow': {
-					main: [0],
+					main: [1],
 				},
 				'/folder/deep': {
 					main: [1],
 				},
 				'': {
-					local: [0],
+					local: [1, 2],
+					'': [1],
 				},
 			},
-				[0, 0],
-				[1, 1],
-			],
 		});
 	});
 });
