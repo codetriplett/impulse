@@ -1,4 +1,4 @@
-import * as esbuild from 'esbuild'
+import * as esbuild from 'esbuild';
 
 const ctx = await esbuild.context({
 	entryPoints: [

@@ -105,7 +105,7 @@ function createTree (depthMap, type) {
 	const modules = [];
 
 	for (const path of paths) {
-		const depth = depthMap[path];
+		const [depth] = depthMap[path];
 
 		if (depth !== 0 && !isExtended) {
 			continue;

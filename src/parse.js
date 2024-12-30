@@ -160,27 +160,27 @@ function processHeaderId (header) {
 	return id;
 }
 
-// function processText (node) {
-// 	const { children } = node;
-// 	let text = '';
+function processText (node) {
+	const { children } = node;
+	let text = '';
 
-// 	for (const node of children) {
-// 		const { type } = node;
+	for (const node of children) {
+		const { type } = node;
 
-// 		switch (type) {
-// 			case 'Link': {
-// 				text += processText(node);
-// 				break;
-// 			}
-// 			case 'Str': {
-// 				text += node.value;
-// 				break;
-// 			}
-// 		}
-// 	}
+		switch (type) {
+			case 'Link': {
+				text += processText(node);
+				break;
+			}
+			case 'Str': {
+				text += node.value;
+				break;
+			}
+		}
+	}
 
-// 	return text;
-// }
+	return text;
+}
 
 function findByType (candidateNodes, expectedType) {
 	const foundNodes = [];
@@ -199,7 +199,6 @@ function findByType (candidateNodes, expectedType) {
 	return foundNodes;
 }
 
-// TODO 1) store # chain on paths in locals arrays
 // TODO 2) allow number prefixes and suffixes on hash values as an attribute
 // - e.g. abc123 (item '123' within 'abc' group)
 // - a number prefix can also be included
@@ -210,66 +209,106 @@ function findByType (candidateNodes, expectedType) {
 //     - if found, add subitem to found item
 //   - then a match with the suffix removed as well
 //     - if found, add item (and subitem if needed) to group
+// - might need to extend MD syntax to put prefix/suffix numbers on reference instead of import
+//   - e.g. [Custom Header][0main123], where main was an import
+//   - e.g. or maybe use {#0main123} as shorthand for [Header #123.0][main], where Header text is pulled from remote file Header
+// - HOW WOULD THESE GET STORED IN NODES?
+//   - maybe just reference #0main123 in locals arrays (would have to store 'main' alias in import array though)
+//   - maybe locals should store a label string as well to make it easier to generate navs and fill in the Header text
+//     - reparsing MD should only be necessary when rendering its content
 export function parseMD (text) {
 	const tree = parseMDtoAST(text);
 	const { children } = tree;
 	const imports = {};
 	const locals = {};
-	const exports = [0, 0];
-	const importRefs = {};
-	const localRefs = {};
+	const exports = [];
+	const refs = {};
+	const fileRefs = {};
+	const numberRefs = {};
 	let prevStart = text.length;
 
 	const definitionNodes = findByType(children, 'Definition');
 	const headerNodes = findByType(children, 'Header').reverse();
 	const referenceNodes = findByType(children, 'LinkReference').reverse();
+	headerNodes.push(null);
 
 	for (const node of definitionNodes) {
 		const { range, label, url } = node;
-		const match = url.match(/^([./].*?)?(?:#(.*))$/);
+		const match = url.match(/^([./].*?)?(?:#(.*?)(\d*?))?$/);
 
-		if (importRefs[label] || !match) {
+		if (imports[label] || !match) {
 			continue;
 		}
 
-		const [path = '.', name] = match.slice(1);
+		const [path = '.', name, number] = match.slice(1);
+		const rangeString = range.slice(0, 2).join('-');
 		const importObject = getObject(imports, path, {});
-		const importArray = getObject(importObject, name, range.slice(0, 2));
-		importRefs[label] = importArray;
+		const importRef = getObject(importObject, name || '', [rangeString]);
+		refs[label] = importRef;
+		fileRefs[label] = importObject;
+		numberRefs[label] = number;
 	}
 
 	for (const node of headerNodes) {
-		const { range } = node;
+		const { range = [0] } = node || {};
 		const rangeStart = range[0];
 		const referenceIndex = referenceNodes.findIndex(({ range }) => range[0] < rangeStart);
 		const referenceCount = referenceIndex === -1 ? referenceNodes.length : referenceIndex;
 		const containedReferences = referenceNodes.splice(0, referenceCount);
-		const id = processHeaderId(node);
-		// headerText = processText(node);
+		const id = node ? processHeaderId(node) : '';
+		const headerText = node ? processText(node) : '';
 
-		if (id) {
-			const localArray = [rangeStart, prevStart];
-			localRefs[id] = localArray;
+		if (id !== undefined) {
+			const localArray = [`${rangeStart}-${prevStart}${headerText && ` ${headerText}`}`];
 			locals[id] = localArray;
-			exports.splice(2, 0, rangeStart);
+
+			if (id) {
+				exports.unshift(id);
+			}
 		}
 
 		for (const node of containedReferences) {
 			const { label } = node;
-			importRefs[label].splice(2, 0, rangeStart);
+			const text = processText(node);
+			let [, hash, name = '', number] = text.match(/(?:#((.*?)(\d*?)))?\s*$/);
+			let ref = refs[label];
+
+			if (hash) {
+				const importObject = fileRefs[label];
+
+				if (name) {
+					ref = importObject ? getObject(importObject, name, ref.slice(0, 1)) : undefined;
+				}
+			} else {
+				number = numberRefs[label];
+			}
+
+			if (!ref) {
+				continue;
+			}
+
+			let idIndex = ref.findIndex(idString => (new RegExp(`^${id}( |$)`)).test(idString));
+
+			if (idIndex === -1) {
+				ref.splice(1, 0, id);
+				idIndex = 1;
+			}
+
+			if (number && !(new RegExp(` ${number}( |$)`)).test(ref[idIndex])) {
+				const parts = ref[idIndex].split(' ');
+				parts.splice(1, 0, number);
+				ref[idIndex] = parts.join(' ');
+			}
 		}
 
 		prevStart = rangeStart;
 	}
 
-	exports[1] = prevStart;
-
-	for (const node of referenceNodes) {
-		const { label } = node;
-		importRefs[label].push(0);
+	if (exports.length) {
+		locals[''][0] += ` ${exports.join(' ')}`;
 	}
 
-	return { ...imports, '': { ...locals, '': exports } };
+	return { ...imports, '': { ...locals } };
 }
 
 // TODO: allow override parse and render functions when running the CLI command

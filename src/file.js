@@ -68,8 +68,19 @@ function focusImportFile (path, activePath) {
 	const { '': locals } = nodes[path];
 	const fragments = [];
 
-	for (const array of Object.values(locals)) {
-		if (array.indexOf(activePath) === -1) {
+	for (const [name, array] of Object.entries(locals)) {
+		const inScope = array.some(hashPath => {
+			if (typeof hashPath !== 'string') {
+				return;
+			}
+
+			// TODO: compare the hashes for import depths of 1 or more
+			// - needs to only include fragments that relate to the locals used directly by the active file
+			const [path, ...hashes] = hashPath.split('#');
+			return path === activePath;
+		});
+
+		if (!inScope) {
 			continue;
 		}
 

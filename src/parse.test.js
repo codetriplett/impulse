@@ -352,110 +352,399 @@ describe.only('parseMD', () => {
 		// use start index as ref index
 		// allow the space above the first headline hold a summary and metadata section for the whole file, imported with a name of just #
 
-	it('parses default reference', () => {
+
+/* {
+	'./file': {
+		remote: [0, 1, '123 789', ...refs],
+	},
+	'': {
+		local: [1, 2, 'Header', ...refs],
+		'': [2, 2, '', ...refs],
+	},
+} */
+
+	it('file reference', () => {
 		const actual = parseMD(
-`[main]: ./file#
+`[file]: ./file
 # Header {#local}
-[Main Label][main]`);
+[File][file]`);
 
 		expect(actual).toEqual({
 			'./file': {
-				'': [0, 15, 16],
+				'': ['0-14', 'local'],
 			},
 			'': {
-				'local': [16, 52],
-				'': [0, 16, 16],
+				local: ['15-45 Header'],
+				'': ['0-15 local'],
+			},
+		});
+	});
+
+	it('name reference from file', () => {
+		const actual = parseMD(
+`[file]: ./file
+# Header {#local}
+[File #main][file]`);
+
+		expect(actual).toEqual({
+			'./file': {
+				main: ['0-14', 'local'],
+				'': ['0-14'],
+			},
+			'': {
+				local: ['15-51 Header'],
+				'': ['0-15 local'],
+			},
+		});
+	});
+
+	it('variation reference from file', () => {
+		const actual = parseMD(
+`[file]: ./file
+# Header {#local}
+[File #main123][file]`);
+
+		expect(actual).toEqual({
+			'./file': {
+				main: ['0-14', 'local 123'], // stored as '/file#local local#123' in map
+				'': ['0-14'],
+			},
+			'': {
+				local: ['15-54 Header'],
+				'': ['0-15 local'], // locals after range here denote exports, since locals can reference the metadata sections with just a local #
+			},
+		});
+	});
+
+	it('name reference', () => {
+		const actual = parseMD(
+`[main]: ./file#main
+# Header {#local}
+[File][main]`);
+
+		expect(actual).toEqual({
+			'./file': {
+				main: ['0-19', 'local'],
+			},
+			'': {
+				local: ['20-50 Header'],
+				'': ['0-20 local'],
+			},
+		});
+	});
+
+	it('variation reference from name', () => {
+		const actual = parseMD(
+`[main]: ./file#main
+# Header {#local}
+[File #123][main]`);
+
+		expect(actual).toEqual({
+			'./file': {
+				main: ['0-19', 'local 123'],
+			},
+			'': {
+				local: ['20-55 Header'],
+				'': ['0-20 local'],
+			},
+		});
+	});
+
+	it('default override from name', () => {
+		const actual = parseMD(
+`[main]: ./file#main
+# Header {#local}
+[File #][main]`);
+
+		expect(actual).toEqual({
+			'./file': {
+				main: ['0-19', 'local'],
+			},
+			'': {
+				local: ['20-52 Header'],
+				'': ['0-20 local'],
+			},
+		});
+	});
+
+	it('name override from name', () => {
+		const actual = parseMD(
+`[main]: ./file#main
+# Header {#local}
+[File #other][main]`);
+
+		expect(actual).toEqual({
+			'./file': {
+				main: ['0-19'],
+				other: ['0-19', 'local'],
+			},
+			'': {
+				local: ['20-57 Header'],
+				'': ['0-20 local'],
 			},
 		});
 	});
 	
-	it('parses named reference', () => {
+	it('variation override from name', () => {
 		const actual = parseMD(
-`[other]: ./file#other
+`[main]: ./file#main
 # Header {#local}
-[Other Label][other]`);
+[File #other123][main]`);
 
 		expect(actual).toEqual({
 			'./file': {
-				other: [0, 21, 22],
+				main: ['0-19'],
+				other: ['0-19', 'local 123'],
 			},
 			'': {
-				'local': [22, 60],
-				'': [0, 22, 22],
+				local: ['20-60 Header'],
+				'': ['0-20 local'],
 			},
 		});
 	});
 
-	it('parses aliased reference', () => {
+	it('variation reference', () => {
 		const actual = parseMD(
-`[alias]: ./file#another
+`[main123]: ./file#main123
 # Header {#local}
-[Alias Label][alias]`);
+[File][main123]`);
 
 		expect(actual).toEqual({
 			'./file': {
-				another: [0, 23, 24],
+				main: ['0-25', 'local 123'],
 			},
 			'': {
-				'local': [24, 62],
-				'': [0, 24, 24],
+				local: ['26-59 Header'],
+				'': ['0-26 local'],
 			},
 		});
 	});
 
-	it('parses local reference', () => {
+	it('default override from variation', () => {
 		const actual = parseMD(
-`[local]: #local
+`[main123]: ./file#main123
 # Header {#local}
-[Local Label][local]`);
-
-		expect(actual).toEqual({
-			'.': {
-				local: [0, 15, 16],
-			},
-			'': {
-				'local': [16, 54],
-				'': [0, 16, 16],
-			}
-		});
-	});
-
-	it('parses reference in top section', () => {
-		const actual = parseMD(
-`[main]: ./file#
-[Meta Label][main]
-# Header {#local}`);
+[File #][main123]`);
 
 		expect(actual).toEqual({
 			'./file': {
-				'': [0, 15, 0],
+				main: ['0-25', 'local 123'],
 			},
 			'': {
-				'local': [35, 52],
-				'': [0, 35, 35],
+				local: ['26-61 Header'],
+				'': ['0-26 local'],
 			},
 		});
 	});
 
-	it('parses multiple headers', () => {
+	it('name override from variation', () => {
 		const actual = parseMD(
-`[main]: ./file#
-# Header {#first}
-[Main Label][main]
-# Header {#second}
-[Main Label][main]`);
+`[main123]: ./file#main123
+# Header {#local}
+[File #other][main123]`);
 
 		expect(actual).toEqual({
 			'./file': {
-				'': [0, 15, 16, 53],
+				main: ['0-25'],
+				other: ['0-25', 'local'],
 			},
 			'': {
-				'first': [16, 53],
-				'second': [53, 90],
-				'': [0, 16, 16, 53],
+				local: ['26-66 Header'],
+				'': ['0-26 local'],
 			},
 		});
 	});
+
+	it('variation override from variation', () => {
+		const actual = parseMD(
+`[main123]: ./file#main123
+# Header {#local}
+[File #other123][main123]`);
+
+		expect(actual).toEqual({
+			'./file': {
+				main: ['0-25'],
+				other: ['0-25', 'local 123'],
+			},
+			'': {
+				local: ['26-69 Header'],
+				'': ['0-26 local'],
+			},
+		});
+	});
+	
+	it('multiple name references', () => {
+		const actual = parseMD(
+`[main]: ./file#main
+# First Header {#first}
+[File][main]
+# Second Header {#second}
+[File][main]`);
+
+		expect(actual).toEqual({
+			'./file': {
+				main: ['0-19', 'first', 'second'],
+			},
+			'': {
+				first: ['20-57 First Header'],
+				second: ['57-95 Second Header'],
+				'': ['0-20 first second'],
+			},
+		});
+	});
+
+	it('multiple variation references', () => {
+		const actual = parseMD(
+`[main]: ./file#main
+# Header {#local}
+[File #123][main]
+[File #789][main]`);
+
+		expect(actual).toEqual({
+			'./file': {
+				main: ['0-19', 'local 123 789'],
+			},
+			'': {
+				local: ['20-73 Header'],
+				'': ['0-20 local'],
+			},
+		});
+	});
+
+
+
+
+
+
+// 	it('parses main reference', () => {
+// 		const actual = parseMD(
+// `[main]: ./file#main
+// # Header {#local}
+// [File Main #123][main]`);
+
+// 		expect(actual).toEqual({
+// 			'./file': {
+// 				main: ['0-19', 'local 123'],
+// 			},
+// 			'': {
+// 				local: ['20-60 Header'],
+// 				'': ['0-20 local'],
+// 			},
+// 		});
+// 	});
+
+// 	// TODO: have this and the others above first check if main123 exists explicitely in file, otherwise use main
+// 	it('parses variation reference', () => {
+// 		const actual = parseMD(
+// `[main123]: ./file#main123
+// # Header {#local}
+// [File Main 123 #main123][main123]`);
+
+// 		expect(actual).toEqual({
+// 			'./file': {
+// 				main: ['0-25', 'local 123'],
+// 			},
+// 			'': {
+// 				local: ['26-77 Header'],
+// 				'': ['0-26 local'],
+// 			},
+// 		});
+// 	});
+
+
+
+
+
+
+
+	
+// 	it('parses named reference', () => {
+// 		const actual = parseMD(
+// `[other]: ./file#other
+// # Header {#local}
+// [Other Label][other]`);
+
+// 		expect(actual).toEqual({
+// 			'./file': {
+// 				other: [0, 21, 22],
+// 			},
+// 			'': {
+// 				'local': [22, 60],
+// 				'': [0, 22, 22],
+// 			},
+// 		});
+// 	});
+
+// 	it('parses aliased reference', () => {
+// 		const actual = parseMD(
+// `[alias]: ./file#another
+// # Header {#local}
+// [Alias Label][alias]`);
+
+// 		expect(actual).toEqual({
+// 			'./file': {
+// 				another: [0, 23, 24],
+// 			},
+// 			'': {
+// 				'local': [24, 62],
+// 				'': [0, 24, 24],
+// 			},
+// 		});
+// 	});
+
+// 	it('parses local reference', () => {
+// 		const actual = parseMD(
+// `[local]: #local
+// # Header {#local}
+// [Local Label][local]`);
+
+// 		expect(actual).toEqual({
+// 			'.': {
+// 				local: [0, 15, 16],
+// 			},
+// 			'': {
+// 				'local': [16, 54],
+// 				'': [0, 16, 16],
+// 			}
+// 		});
+// 	});
+
+// 	it('parses reference in top section', () => {
+// 		const actual = parseMD(
+// `[main]: ./file#
+// [Meta Label][main]
+// # Header {#local}`);
+
+// 		expect(actual).toEqual({
+// 			'./file': {
+// 				'': [0, 15, 0],
+// 			},
+// 			'': {
+// 				'local': [35, 52],
+// 				'': [0, 35, 35],
+// 			},
+// 		});
+// 	});
+
+// 	it('parses multiple headers', () => {
+// 		const actual = parseMD(
+// `[main]: ./file#
+// # Header {#first}
+// [Main Label][main]
+// # Header {#second}
+// [Main Label][main]`);
+
+// 		expect(actual).toEqual({
+// 			'./file': {
+// 				'': [0, 15, 16, 53],
+// 			},
+// 			'': {
+// 				'first': [16, 53],
+// 				'second': [53, 90],
+// 				'': [0, 16, 16, 53],
+// 			},
+// 		});
+// 	});
 });
 
 describe('parse', () => {

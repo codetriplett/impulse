@@ -103,7 +103,7 @@ function getImports (path, depthMap = {}, depth = 0, rootPath) {
 			continue;
 		}
 
-		depthMap[path] = depth;
+		depthMap[path] = [depth];
 		newPaths.push(path);
 	}
 
@@ -131,16 +131,18 @@ function getExports (path, depthMap = {}, depth = 0, rootPath) {
 	}
 	
 	const { '': locals } = node;
-	const paths = new Set(Object.values(locals).map(array => array.filter(it => typeof it === 'string')).flat());
+	const hashPaths = new Set(Object.values(locals).map(array => array.filter(it => typeof it === 'string')).flat());
 	const nextDepth = depth + 1;
 	const newPaths = [];
 
-	for (const path of paths) {
+	for (const hashPath of hashPaths) {
+		const [path] = hashPath.split('#');
+
 		if (path === rootPath || depthMap[path] !== undefined) {
 			continue;
 		}
 
-		depthMap[path] = depth;
+		depthMap[path] = [depth];
 		newPaths.push(path);
 	}
 
