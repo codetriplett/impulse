@@ -131,12 +131,13 @@ function getExports (path, depthMap = {}, depth = 0, rootPath) {
 	}
 	
 	const { '': locals } = node;
-	const hashPaths = new Set(Object.values(locals).map(array => array.filter(it => typeof it === 'string')).flat());
+	const hashPaths = new Set(Object.values(locals).map(array => array.slice(1)).flat());
 	const nextDepth = depth + 1;
 	const newPaths = [];
 
 	for (const hashPath of hashPaths) {
-		const [path] = hashPath.split('#');
+		const [firstPart] = hashPath.split(' ');
+		const [path] = firstPart.split('#');
 
 		if (path === rootPath || depthMap[path] !== undefined) {
 			continue;

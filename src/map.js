@@ -68,7 +68,7 @@ export function clearNode (map, nodePath) {
 			array[0] = '';
 
 			if (array.length > 1) {
-				exportPaths[name] = array;
+				exportPaths[name] = array.slice(1);
 				hasExports = true;
 			}
 		}
@@ -76,7 +76,7 @@ export function clearNode (map, nodePath) {
 
 	if (hasExports) {
 		if (!exportPaths['']) {
-			exportPaths[''] = [''];
+			exportPaths[''] = [];
 		}
 
 		map[nodePath] = { '': exportPaths };

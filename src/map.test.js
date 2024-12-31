@@ -77,8 +77,8 @@ describe('clearNode', () => {
 		const actual = clearNode(map, '/node');
 
 		expect(actual).toEqual({
-			local: ['', '/child#'],
-			'': [''],
+			local: ['/child#'],
+			'': [],
 		});
 
 		expect(map).toEqual({
@@ -166,7 +166,7 @@ describe('updateNode', () => {
 			},
 			'': {
 				local: ['1-2 Root Header'],
-				'': ['2-2'],
+				'': ['2-2 local'],
 			},
 		});
 
@@ -185,7 +185,7 @@ describe('updateNode', () => {
 				},
 				'': {
 					local: ['1-2 Root Header'],
-					'': ['2-2'],
+					'': ['2-2 local'],
 				},
 			},
 		});
@@ -207,7 +207,7 @@ describe('updateNode', () => {
 			},
 			'': {
 				local: ['1-2 Root Header'],
-				'': ['2-2'],
+				'': ['2-2 local'],
 			},
 		});
 
@@ -226,7 +226,7 @@ describe('updateNode', () => {
 				},
 				'': {
 					local: ['1-2 Root Header'],
-					'': ['2-2'],
+					'': ['2-2 local'],
 				},
 			},
 		});
@@ -241,7 +241,7 @@ describe('updateNode', () => {
 			},
 			'': {
 				local: ['1-2 Root Header'],
-				'': ['2-2'],
+				'': ['2-2 local'],
 			},
 		});
 
@@ -258,7 +258,52 @@ describe('updateNode', () => {
 				},
 				'': {
 					local: ['1-2 Root Header'],
-					'': ['2-2'],
+					'': ['2-2 local'],
+				},
+			},
+		});
+	});
+
+	it('updates placeholders', () => {
+		const map = {
+			'/file': {
+				'': {
+					main: ['', '/root#local'],
+					'': [''],
+				},
+			},
+			'/root': {
+				'/file': {
+					main: ['0-1', 'local'],
+				},
+				'': {
+					local: ['1-2 Root Header'],
+					'': ['2-2 local'],
+				},
+			},
+		};
+
+		updateNode(map, '/file', {
+			'': {
+				main: ['1-2 File Header'],
+				'': ['2-2 main'],
+			},
+		});
+
+		expect(map).toEqual({
+			'/file': {
+				'': {
+					main: ['1-2 File Header', '/root#local'],
+					'': ['2-2 main'],
+				},
+			},
+			'/root': {
+				'/file': {
+					main: ['0-1', 'local'],
+				},
+				'': {
+					local: ['1-2 Root Header'],
+					'': ['2-2 local'],
 				},
 			},
 		});
@@ -276,7 +321,7 @@ describe('updateNode', () => {
 			},
 			'': {
 				local: ['1-2'],
-				'': ['2-2'],
+				'': ['2-2 local'],
 			}
 		});
 
@@ -302,7 +347,7 @@ describe('updateNode', () => {
 				},
 				'': {
 					local: ['1-2'],
-					'': ['2-2'],
+					'': ['2-2 local'],
 				},
 			},
 		});
