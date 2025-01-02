@@ -81,6 +81,11 @@ function closeTab (tabIndex) {
 	storeSession();
 }
 
+// show all locals first, regardless of whether they export
+// - for MD: start with h2 tags, then embed lower h tags below those (only ones that have label (e.g. MD))
+//   - have a final option at the end for citations (imports)
+//     - expand to show headlines for imports in the order they were first used
+// - for JS: show just the citations without having to expand
 function getImports (path, depthMap = {}, depth = 0, rootPath) {
 	const { nodes } = state;
 	const node = nodes[path];
@@ -118,6 +123,10 @@ function getImports (path, depthMap = {}, depth = 0, rootPath) {
 	return depthMap;
 }
 
+// show just the exports (not headlines)
+// - for MD: expand to show variations
+//   - also show a final option below exports to expand to show implementations
+// - for JS: show just the implementations without having to expand them
 function getExports (path, depthMap = {}, depth = 0, rootPath) {
 	const { nodes } = state;
 	const node = nodes[path];

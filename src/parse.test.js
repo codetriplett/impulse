@@ -363,6 +363,11 @@ describe.only('parseMD', () => {
 	},
 } */
 
+	// TODO: allow parsing headlines without ids
+	// - store with integer key
+	// - also store the parent headline of each as part of the range section (e.g. '15-50#parent Headline' or '15-50# Headline' for H1s
+	// - use the parent along wiht the start index to sort the healines in the side panel
+
 	it('file reference', () => {
 		const actual = parseMD(
 `[file]: ./file
@@ -607,6 +612,63 @@ describe.only('parseMD', () => {
 			'': {
 				local: ['20-73 Header'],
 				'': ['0-20 local'],
+			},
+		});
+	});
+
+	it('nameless header', () => {
+		const actual = parseMD(
+`[file]: ./file
+# Header
+[File][file]`);
+
+		expect(actual).toEqual({
+			'./file': {
+				'': ['0-14', '0'],
+			},
+			'': {
+				0: ['15-36 Header'],
+				'': ['0-15'],
+			},
+		});
+	});
+
+	it('skips duplicate name', () => {
+		const actual = parseMD(
+`[file]: ./file
+# First Header {#local}
+[File][file]
+# Second Header {#local}
+[File][file]`);
+
+		expect(actual).toEqual({
+			'./file': {
+				'': ['0-14', 'local', '0'],
+			},
+			'': {
+				local: ['15-52 First Header'],
+				0: ['52-89 Second Header'],
+				'': ['0-15 local'],
+			},
+		});
+	});
+
+	it('anchors to parent', () => {
+		const actual = parseMD(
+`[file]: ./file
+# Parent Header {#parent}
+[File][file]
+## Child Header {#child}
+[File][file]`);
+
+		expect(actual).toEqual({
+			'./file': {
+				'': ['0-14', 'parent', 'child'],
+			},
+			'': {
+				parent: ['15-54 Parent Header'],
+				child: ['54-91#parent Child Header'],
+				'': ['0-15 parent child'],
 			},
 		});
 	});

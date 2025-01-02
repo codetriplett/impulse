@@ -3,8 +3,8 @@ import { Parser } from 'acorn';
 import jsx from 'acorn-jsx';
 import { getObject } from './common';
 
-const jsxExt = jsx.default();
-// const jsxExt = jsx();
+// const jsxExt = jsx.default();
+const jsxExt = jsx();
 
 const options = {
 	ecmaVersion: 'latest',
@@ -137,26 +137,6 @@ function processHeaderId (header) {
 	end.column -= length;
 	range[1] -= length;
 
-	children.push({
-		loc: {
-			start: {
-				line: end.line,
-				column: end.column + suffix.indexOf('{'),
-			},
-			end: {
-				line: end.line,
-				column: end.column + suffix.lastIndexOf('}') + 1,
-			},
-		},
-		range: [
-			range[1] + suffix.indexOf('{'),
-			range[1] + suffix.lastIndexOf('}') + 1,
-		],
-		raw: suffix.trim(),
-		type: 'Id',
-		value: id,
-	});
-
 	return id;
 }
 
@@ -226,11 +206,11 @@ export function parseMD (text) {
 	const fileRefs = {};
 	const numberRefs = {};
 	let prevStart = text.length;
+	let nextKeyIndex = 0;
 
 	const definitionNodes = findByType(children, 'Definition');
 	const headerNodes = findByType(children, 'Header').reverse();
 	const referenceNodes = findByType(children, 'LinkReference').reverse();
-	headerNodes.push(null);
 
 	for (const node of definitionNodes) {
 		const { range, label, url } = node;
@@ -254,20 +234,40 @@ export function parseMD (text) {
 		const rangeStart = range[0];
 		const referenceIndex = referenceNodes.findIndex(({ range }) => range[0] < rangeStart);
 		const referenceCount = referenceIndex === -1 ? referenceNodes.length : referenceIndex;
-		const containedReferences = referenceNodes.splice(0, referenceCount);
+		const references = referenceNodes.splice(0, referenceCount).reverse();
 		const id = node ? processHeaderId(node) : '';
-		const headerText = node ? processText(node) : '';
+		const text = node ? processText(node) : '';
 
-		if (id !== undefined) {
-			const localArray = [`${rangeStart}-${prevStart}${headerText && ` ${headerText}`}`];
-			locals[id] = localArray;
+		Object.assign(node, { id, text, references, end: prevStart });
+		prevStart = rangeStart;
+	}
 
-			if (id) {
-				exports.unshift(id);
+	const headerStack = [];
+	headerNodes.reverse();
+
+	for (const node of headerNodes) {
+		const { range, depth, id, text, references, end } = node;
+		let key = id;
+
+		if (!key || locals[key]) {
+			while (locals[nextKeyIndex]) {
+				nextKeyIndex++;
 			}
+
+			key = String(nextKeyIndex);
 		}
 
-		for (const node of containedReferences) {
+		headerStack.splice(0, headerStack.length - depth + 1, key);
+		const parentKey = headerStack[1];
+
+		const localArray = [`${range[0]}-${end}${parentKey ? `#${parentKey}` : ''}${text && ` ${text}`}`];
+		locals[key] = localArray;
+
+		if (key === id) {
+			exports.push(key);
+		}
+
+		for (const node of references) {
 			const { label } = node;
 			const text = processText(node);
 			let [, hash, name = '', number] = text.match(/(?:#((.*?)(\d*?)))?\s*$/);
@@ -287,28 +287,28 @@ export function parseMD (text) {
 				continue;
 			}
 
-			let idIndex = ref.findIndex(idString => (new RegExp(`^${id}( |$)`)).test(idString));
+			let keyIndex = ref.findIndex(keyString => (new RegExp(`^${key}( |$)`)).test(keyString));
 
-			if (idIndex === -1) {
-				ref.splice(1, 0, id);
-				idIndex = 1;
+			if (keyIndex === -1) {
+				ref.push(key);
+				keyIndex = 1;
 			}
 
-			if (number && !(new RegExp(` ${number}( |$)`)).test(ref[idIndex])) {
-				const parts = ref[idIndex].split(' ');
-				parts.splice(1, 0, number);
-				ref[idIndex] = parts.join(' ');
+			if (number && !(new RegExp(` ${number}( |$)`)).test(ref[keyIndex])) {
+				const parts = ref[keyIndex].split(' ');
+				parts.push(number);
+				ref[keyIndex] = parts.join(' ');
 			}
 		}
-
-		prevStart = rangeStart;
 	}
 
-	if (exports.length) {
-		locals[''][0] += ` ${exports.join(' ')}`;
-	}
-
-	return { ...imports, '': { ...locals } };
+	return {
+		...imports,
+		'': {
+			'': [`0-${prevStart}${exports.length ? ` ${exports.join(' ')}`: ''}`],
+			...locals,
+		},
+	};
 }
 
 // TODO: allow override parse and render functions when running the CLI command
