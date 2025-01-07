@@ -3,8 +3,8 @@ import { Parser } from 'acorn';
 import jsx from 'acorn-jsx';
 import { getObject } from './common';
 
-// const jsxExt = jsx.default();
-const jsxExt = jsx();
+const jsxExt = jsx.default();
+// const jsxExt = jsx();
 
 const options = {
 	ecmaVersion: 'latest',

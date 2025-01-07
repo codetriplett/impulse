@@ -1,7 +1,6 @@
 import { state, storeSession } from '.';
 import { closeReference } from './file';
-
-const { createState } = window.stew;
+import { createState } from '@triplett/stew';
 
 const importState = createState({
 	isSplit: false,
@@ -221,6 +220,118 @@ export function renderList (levels, type, showSettings, activeTab) {
 				],
 			],
 			renderFolder(rootFolder, type, activePaths, activeTab),
+		];
+	};
+}
+
+const nodeState = createState({
+	focusedNames: [],
+});
+
+function renderImportNode (node, isCitation) {
+	const { name, heading, children, citations } = node;
+	// const isFocused = true || focusedNames.indexOf(name) !== -1;
+
+	return ['', null,
+		heading && ['p', {
+			className: isCitation ? 'citation-link' : '',
+		}, heading],
+		// isFocused && citations?.length && ['ul', {
+		// 	className: 'citation-list',
+		// },
+		// 	...citations.map(citation => {
+		// 		return ['li', null,
+		// 			renderImportNode(citation, true),
+		// 		];
+		// 	}),
+		// ],
+		children?.length && ['ul', null,
+			...children.map(child => {
+				return ['li', null,
+					renderImportNode(child),
+				];
+			}),
+		],
+	];
+}
+
+// use intersection observer to detect which headings have entered and exited view
+// - send names of all headings in view
+// - wait until MD is rendered to HTML first
+function gatherCitations (visibleNodes) {
+	return new Set(visibleNodes.map(({ citations = [] }) => citations).flat());
+}
+
+// use this for now to render all citations, regardless of whether they are in view
+function gatherNodes (node) {
+	const { children = [] } = node;
+	const nodes = children.map(gatherNodes).flat();
+	return [node, ...nodes];
+}
+
+export function renderImports (imports) {
+	if (!imports) {
+		return null;
+	}
+
+	return memo => {
+		if (memo[0] !== imports) {
+			let folder = imports;
+
+			if (folder.children.length === 1) {
+				const { children: folderChildren, citations: folderCitations = [] } = folder;
+				const { children, citations: childCitations = [] } = folderChildren[0];
+				const citations = [...folderCitations, ...childCitations];
+
+				folder = { children };
+
+				if (citations.length) {
+					folder.citations = citations;
+				}
+			}
+
+			// TODO: get these from which headers are in view
+			const visibleNodes = gatherNodes(folder);
+
+			memo[0] = imports;
+			memo[1] = folder;
+			memo[2] = gatherCitations(visibleNodes);
+
+			nodeState.focusedNames.splice(0);
+		}
+
+		const rootNode = memo[1];
+		const citations = [...memo[2]];
+
+		// const { isExtended } = listState;
+		// const [prevLevels, prevRootFolder, prevIsExtended] = memo;
+		// let rootFolder = prevRootFolder;
+
+		// if (levels !== prevLevels || isExtended !== prevIsExtended) {
+		// 	rootFolder = createTree(levels, type, isExtended);
+		// 	memo.splice(0, 3, levels, rootFolder, isExtended);
+		// }
+
+		return ['div', { className: 'import-list left-nav' },
+			// showSettings && ['ul', { className: 'list-settings' },
+			// 	['li', { className: 'list-setting' },
+			// 		['input', {
+			// 			type: 'checkbox',
+			// 			checked: isExtended,
+			// 			onclick: () => listState.isExtended = !isExtended,
+			// 		}],
+			// 		['label', { className: 'list-setting-label' }, 'Recursive Scan'],
+			// 	],
+			// ],
+			// renderFolder(rootFolder, type, activePaths, activeTab),
+			renderImportNode(rootNode),
+			['ul', { className: 'citation-list' },
+				...citations.map(({ heading }) => {
+					return ['li', null,
+						['p', { className: 'citation-link' }, heading],
+					];
+				}),
+			],
 		];
 	};
 }

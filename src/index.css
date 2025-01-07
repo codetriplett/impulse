@@ -271,3 +271,23 @@ html {
 .textarea-wrapper {
 	display: flex;
 }
+
+.left-nav ul {
+	margin: 0;
+	padding-left: 15px;
+	list-style: none;
+}
+.left-nav > ul {
+	padding-left: 5px;
+}
+.left-nav p {
+	margin: 5px 0;
+}
+.left-nav .citation-list {
+	margin-top: 15px;
+	border-top: 1px solid gray;
+	padding-top: 10px;
+}
+.citation-link {
+	color: dimgray;
+}

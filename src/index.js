@@ -1,9 +1,9 @@
 // import { buildMap } from './parse';
-import { renderList } from './list';
+import { renderList, renderImports } from './list';
 import { renderTab } from './file';
 import { renderMenu } from './menu';
-
-const { createState, onRender } = window.stew;
+import { getObject } from './common';
+import { createState, onRender } from '@triplett/stew';
 
 export const state = createState({
 	tabs: [],
@@ -86,42 +86,174 @@ function closeTab (tabIndex) {
 //   - have a final option at the end for citations (imports)
 //     - expand to show headlines for imports in the order they were first used
 // - for JS: show just the citations without having to expand
-function getImports (path, depthMap = {}, depth = 0, rootPath) {
+function getCitations (path, registry, focusedNames) {
 	const { nodes } = state;
 	const node = nodes[path];
 
 	if (!node) {
-		return;
-	}
-
-	if (!rootPath) {
-		rootPath = path;
+		return [];
 	}
 
 	const { '': locals, ...imports } = node;
-	const paths = Object.keys(imports);
-	const nextDepth = depth + 1;
-	const newPaths = [];
+	const childEntries = [];
+	const citations = [];
 
-	for (const path of paths) {
-		if (path === rootPath || depthMap[path] !== undefined) {
+	for (const name of focusedNames) {
+		const array = locals[name];
+
+		if (!array) {
 			continue;
 		}
 
-		depthMap[path] = [depth];
-		newPaths.push(path);
+		const [info] = array;
+		const [position, ...strings] = info.split(' ');
+		const [range, parent] = position.split('#');
+		const [start] = range.split('-');
+		const heading = strings.join(' ');
+		const entry = [Number(start), parent, name, heading];
+
+		childEntries.push(entry);
+	}
+	
+	childEntries.sort(([a], [b]) => a - b);
+
+	for (const childEntry of childEntries) {
+		const [, parent, name, heading] = childEntry;
+		const hashPath = `${path}#${name}`;
+		let child = registry[hashPath];
+
+		if (child?.name === undefined) {
+			if (!child) {
+				child = {};
+				registry[hashPath] = child;
+			}
+
+			const childCitations = [];
+			child.name = name;
+
+			if (name) {
+				child.heading = heading;
+			}
+
+			for (const [path, object] of Object.entries(imports)) {
+				const names = Object.keys(object).filter(importName => {
+					return object[importName].indexOf(name) > 0;
+				});
+
+				const newCitations = getCitations(path, registry, names);
+				childCitations.push(...newCitations);
+			}
+
+			if (childCitations.length) {
+				child.citations = childCitations;
+			}
+		}
+
+		if (name) {
+			const parentHashPath = `${path}#${parent || ''}`;
+			const node = getObject(registry, parentHashPath, {});
+			const children = getObject(node, 'children', [])
+			children.push(child);
+		}
+		
+		citations.push(child);
 	}
 
-	for (const path of newPaths) {
-		getImports(path, depthMap, nextDepth, rootPath);
-	}
-
-	if (Object.keys(depthMap).length === 0) {
-		return;
-	}
-
-	return depthMap;
+	return citations;
 }
+
+export function getImports (path, focusedNames = [], citations = {}) {
+	const { nodes } = state;
+	const node = nodes[path];
+
+	if (!node) {
+		return [];
+	}
+
+	const { '': locals } = node;
+	const names = focusedNames.length ? focusedNames : Object.keys(locals);
+	getCitations(path, citations, names);
+
+	return citations[`${path}#`];
+}
+
+
+
+
+
+
+
+
+	// for (const [path, object] of Object.entries(imports)) {
+	// 	if (path === '') {
+	// 		continue;
+	// 	}
+
+	// 	const refs = {};
+
+	// 	for (const [importName, array] of Object.entries(object)) {
+	// 		for (const string of array.slice(1)) {
+	// 			const [localName] = string.split(' ');
+
+	// 			if (!focusedNames.has(localName)) {
+	// 				continue;
+	// 			}
+
+	// 			const names = getObject(refs, localName, new Set());
+	// 			names.add(importName);
+	// 		}
+	// 	}
+
+	// 	for (const [name, names] of Object.entries(refs)) {
+	// 		const nestedImport = getImports(path, names, [...visitedNames]);
+	// 		const nestedObject = getObject(nestedImports, name, []);
+	// 		nestedObject.push(nestedImport);
+	// 	}
+	// }
+	
+	// // TODO: put nested headlines under their parent using the # value after range
+	// // - ones that don't point to a parent headline will exist in the top level children array
+	// const children = .map(([, name, text]) => {
+	// 	const child = { text, name };
+	// 	const citations = nestedImports[name];
+
+	// 	if (citations) {
+	// 		child.citations = citations;
+	// 	}
+
+	// 	return child;
+	// });
+
+	// const citations = nestedImports[''] || [];
+	// return { path, children, citations };
+
+	// return { children, citations };
+	
+
+
+	// const paths = Object.keys(imports);
+	// const nextDepth = depth + 1;
+	// const newPaths = [];
+
+	// for (const path of paths) {
+	// 	if (path === rootPath || depthMap[path] !== undefined) {
+	// 		continue;
+	// 	}
+
+	// 	depthMap[path] = [depth];
+	// 	newPaths.push(path);
+	// }
+
+	// for (const path of newPaths) {
+	// 	getImports(path, depthMap, nextDepth, rootPath);
+	// }
+
+	// if (Object.keys(depthMap).length === 0) {
+	// 	return;
+	// }
+
+	// return depthMap;
+// }
 
 // show just the exports (not headlines)
 // - for MD: expand to show variations
@@ -199,10 +331,12 @@ function loadPath () {
 	}
 }
 
-window.onhashchange = () => {
-	loadPath();
-	storeSession();
-};
+if (typeof window !== 'undefined') {
+	window.onhashchange = () => {
+		loadPath();
+		storeSession();
+	};
+}
 
 // show import list and info page for path that is found but not yet loaded
 // - paths to folders should show the imports of all files inside it
@@ -297,7 +431,7 @@ function renderApp (memo) {
 			['div', { className: 'editor-wrapper' },
 				['div', { className: 'editor' },
 					// TODO: fix stew issue where empty string (path) doesn't remove preview list element
-					hasImports && renderList(imports, 'imports', showImportSettings, activeTab),
+					hasImports && renderImports(imports),
 					path ? renderTab(activeTab, tabPlacement) : renderMenu(),
 					hasExports && renderList(exports, 'exports', showExportSettings, activeTab),
 				],
@@ -306,6 +440,8 @@ function renderApp (memo) {
 	];
 }
 
-recallSession();
-loadPath();
-stew('#app', renderApp);
+if (typeof window !== 'undefined') {
+	recallSession();
+	loadPath();
+	stew('#app', renderApp);
+}
