@@ -62,35 +62,51 @@ function saveChange (ref, path, i) {
 	storeSession();
 }
 
-function focusImportFile (path, activePath) {
+function focusImportFile (hashPath, activePath) {
+	const [path, hash = ''] = hashPath.split('#');
 	const { files, nodes } = state;
 	const file = files[path];
 	const { '': locals } = nodes[path];
-	const fragments = [];
+	const local = locals[hash];
 
-	for (const [name, array] of Object.entries(locals)) {
-		const inScope = array.some(hashPath => {
-			if (typeof hashPath !== 'string') {
-				return;
-			}
-
-			// TODO: compare the hashes for import depths of 1 or more
-			// - needs to only include fragments that relate to the locals used directly by the active file
-			const [path, ...hashes] = hashPath.split('#');
-			return path === activePath;
-		});
-
-		if (!inScope) {
-			continue;
-		}
-
-		const [start, end] = array;
-		const fragment = file.slice(start, end);
-		fragments.push(fragment);
+	if (!local) {
+		return '';
 	}
 
-	const text = fragments.join('\n');
+	const [info] = local[0].split(' ');
+	const [range] = info.split('#');
+	const [start, finish] = range.split('-');
+	const text = file.slice(start, finish);
+
 	return text;
+
+	// const fragments = [];
+
+	// console.log(locals);
+
+	// for (const [name, array] of Object.entries(locals)) {
+	// 	const inScope = array.some(hashPath => {
+	// 		if (typeof hashPath !== 'string') {
+	// 			return;
+	// 		}
+
+	// 		// TODO: compare the hashes for import depths of 1 or more
+	// 		// - needs to only include fragments that relate to the locals used directly by the active file
+	// 		const [path, ...hashes] = hashPath.split('#');
+	// 		return path === activePath;
+	// 	});
+
+	// 	if (!inScope) {
+	// 		continue;
+	// 	}
+
+	// 	const [start, end] = array;
+	// 	const fragment = file.slice(start, end);
+	// 	fragments.push(fragment);
+	// }
+
+	// const text = fragments.join('\n');
+	// return text;
 }
 
 function focusExportFile (path, activePath) {

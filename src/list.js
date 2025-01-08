@@ -28,16 +28,16 @@ const classNames = {
 //   - it helps trace logic across your codebase at a glance
 // - go back to putting the path for the active textarea in the path input at the top
 
-function loadImport (path) {
-	const { tabs } = state;
-	const [{ index: tabIndex }] = tabs;
-	const tab = tabs[tabIndex + 1];
-	const [{ index: pathIndex }] = tab;
-	tab.splice(pathIndex + 1, 0, path);
-	tab[0].index += 1;
-	state.tabs = [...tabs];
-	storeSession();
-}
+// function loadImport (path) {
+// 	const { tabs } = state;
+// 	const [{ index: tabIndex }] = tabs;
+// 	const tab = tabs[tabIndex + 1];
+// 	const [{ index: pathIndex }] = tab;
+// 	tab.splice(pathIndex + 1, 0, path);
+// 	tab[0].index += 1;
+// 	state.tabs = [...tabs];
+// 	storeSession();
+// }
 
 function loadExport (path) {
 	const { tabs } = state;
@@ -269,7 +269,63 @@ function gatherNodes (node) {
 	return [node, ...nodes];
 }
 
-export function renderImports (imports) {
+function getActiveTab () {
+	const { tabs } = state;
+	const [{ index: tabIndex }] = tabs;
+	const tab = tabs[tabIndex + 1];
+	return tab;
+}
+
+function openCitation (path) {
+	const tab = getActiveTab();
+	const [{ index: pivotIndex }] = tab;
+	const citationIndex = tab.indexOf(path);
+
+	if (citationIndex > 0 && citationIndex < pivotIndex) {
+		return;
+	}
+
+	const { tabs } = state;
+	tab.splice(pivotIndex + 1, 0, path);
+	tab[0].index += 1;
+	state.tabs = [...tabs];
+	storeSession();
+}
+
+function closeCitation () {
+	const tab = getActiveTab();
+	const [{ index: pivotIndex }] = tab;
+	const citationIndex = tab.indexOf(path);
+
+	if (citationIndex <= 0 || citationIndex >= pivotIndex) {
+		return;
+	}
+
+	const { tabs } = state;
+	tab[0].index -= 1;
+	state.tabs = [...tabs];
+	storeSession();
+}
+
+function toggleCitation (path) {
+	const { tabs } = state;
+	const tab = getActiveTab();
+	const [{ index: pivotIndex }] = tab;
+	const citationIndex = tab.indexOf(path);
+
+	if (citationIndex > 0 && citationIndex <= pivotIndex) {
+		tab.splice(citationIndex, 1);
+		tab[0].index -= 1;
+	} else {
+		tab.splice(pivotIndex + 1, 0, path);
+		tab[0].index += 1;
+	}
+
+	state.tabs = [...tabs];
+	storeSession();
+}
+
+export function renderImports (imports, showImportSettings, activeTab) {
 	if (!imports) {
 		return null;
 	}
@@ -326,9 +382,15 @@ export function renderImports (imports) {
 			// renderFolder(rootFolder, type, activePaths, activeTab),
 			renderImportNode(rootNode),
 			['ul', { className: 'citation-list' },
-				...citations.map(({ heading }) => {
+				...citations.map(({ path, heading }) => {
 					return ['li', null,
-						['p', { className: 'citation-link' }, heading],
+						['button', {
+							className: 'citation-link',
+							type: 'button',
+							onclick: () => {
+								toggleCitation(path);
+							},
+						}, heading],
 					];
 				}),
 			],

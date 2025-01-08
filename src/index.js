@@ -129,6 +129,7 @@ function getCitations (path, registry, focusedNames) {
 			}
 
 			const childCitations = [];
+			child.path = `${path}#${name}`;
 			child.name = name;
 
 			if (name) {
@@ -431,7 +432,7 @@ function renderApp (memo) {
 			['div', { className: 'editor-wrapper' },
 				['div', { className: 'editor' },
 					// TODO: fix stew issue where empty string (path) doesn't remove preview list element
-					hasImports && renderImports(imports),
+					hasImports && renderImports(imports, showImportSettings, activeTab),
 					path ? renderTab(activeTab, tabPlacement) : renderMenu(),
 					hasExports && renderList(exports, 'exports', showExportSettings, activeTab),
 				],

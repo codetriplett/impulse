@@ -289,5 +289,9 @@ html {
 	padding-top: 10px;
 }
 .citation-link {
+    border: none;
+    padding: 0;
+    font-size: 16px;
 	color: dimgray;
+    background: none;
 }
