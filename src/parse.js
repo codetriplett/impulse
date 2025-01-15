@@ -1,64 +1,14 @@
 import { parse as parseMDtoAST } from '@textlint/markdown-to-ast';
-import { Parser } from 'acorn';
-import jsx from 'acorn-jsx';
+import { parse as parseJStoAST } from 'acorn';
 import { getObject } from './common';
-
-const jsxExt = jsx.default();
-// const jsxExt = jsx();
 
 const options = {
 	ecmaVersion: 'latest',
 	sourceType: 'module',
 };
 
-// export function cleanMap (map, path) {
-// 	for (const [name, imports] of Object.entries(node)) {
-// 		const location = map[name];
-
-// 		for (const name in imports) {
-// 			location[name].delete(path)
-// 		}
-// 	}
-// }
-
-// export function buildMap (nodes) {
-// 	const map = {};
-
-// 	for (const [rootPath, imports] of Object.entries(nodes)) {
-// 		for (const [sourcePath, exports] of Object.entries(imports)) {
-// 			let mapLocation = map[sourcePath];
-
-// 			if (!mapLocation) {
-// 				mapLocation = {};
-// 				map[sourcePath] = mapLocation;
-// 			}
-
-// 			for (const importedName in exports) {
-// 				let mapEntry = mapLocation[importedName];
-
-// 				if (!mapEntry) {
-// 					mapEntry = new Set();
-// 					mapLocation[importedName] = mapEntry;
-// 				}
-
-// 				mapEntry.add(rootPath);
-// 			}
-// 		}
-// 	}
-
-// 	return map;
-// }
-
-function processNode (node, imports, locals, exports) {
-	const { type } = node;
-
-	// switch (type) {
-	// 	case ''
-	// }
-}
-
 export function parseJS (text) {
-	const { body } = Parser.extend(jsxExt).parse(text, options);
+	const { body } = parseJStoAST(text, options);
 	const imports = {};
 	const importRefs = {};
 
@@ -115,10 +65,14 @@ export function parseJS (text) {
 	return imports;
 }
 
-function processHeaderId (header) {
-	const { children } = header;
+export function processId (node) {
+	if ('id' in node) {
+		return;
+	}
+
+	const { children = [] } = node;
 	const lastChild = children[children.length - 1];
-	const { type, loc, range, value } = lastChild;
+	const { type, loc, range, value } = lastChild || {};
 
 	if (type !== 'Str') {
 		return;
@@ -132,15 +86,15 @@ function processHeaderId (header) {
 
 	const { end } = loc;
 	const { length } = suffix;
+
 	lastChild.raw = value.slice(0, -length);
 	lastChild.value = value.slice(0, -length);
 	end.column -= length;
 	range[1] -= length;
-
-	return id;
+	node.id = id;
 }
 
-function processText (node) {
+function getText (node) {
 	const { children } = node;
 	let text = '';
 
@@ -149,7 +103,7 @@ function processText (node) {
 
 		switch (type) {
 			case 'Link': {
-				text += processText(node);
+				text += getText(node);
 				break;
 			}
 			case 'Str': {
@@ -179,136 +133,100 @@ function findByType (candidateNodes, expectedType) {
 	return foundNodes;
 }
 
-// TODO 2) allow number prefixes and suffixes on hash values as an attribute
-// - e.g. abc123 (item '123' within 'abc' group)
-// - a number prefix can also be included
-// - e.g. 0type123 (subitem '0' within abc123)
-// - when resolving a hash...
-//   - first try to find an exact match
-//   - then a match with the prefix removed
-//     - if found, add subitem to found item
-//   - then a match with the suffix removed as well
-//     - if found, add item (and subitem if needed) to group
-// - might need to extend MD syntax to put prefix/suffix numbers on reference instead of import
-//   - e.g. [Custom Header][0main123], where main was an import
-//   - e.g. or maybe use {#0main123} as shorthand for [Header #123.0][main], where Header text is pulled from remote file Header
-// - HOW WOULD THESE GET STORED IN NODES?
-//   - maybe just reference #0main123 in locals arrays (would have to store 'main' alias in import array though)
-//   - maybe locals should store a label string as well to make it easier to generate navs and fill in the Header text
-//     - reparsing MD should only be necessary when rendering its content
 export function parseMD (text) {
 	const tree = parseMDtoAST(text);
 	const { children } = tree;
-	const imports = {};
-	const locals = {};
-	const exports = [];
-	const refs = {};
-	const fileRefs = {};
-	const numberRefs = {};
+	const urls = {};
 	let prevStart = text.length;
-	let nextKeyIndex = 0;
+	
+	const definitions = findByType(children, 'Definition');
+	const snips = findByType(children, 'Header');
+	const links = findByType(children, 'Link');
+	const references = findByType(children, 'LinkReference');
+	snips.unshift({ range: [0], children: [] });
 
-	const definitionNodes = findByType(children, 'Definition');
-	const headerNodes = findByType(children, 'Header').reverse();
-	const referenceNodes = findByType(children, 'LinkReference').reverse();
+	for (const node of definitions) {
+		const { label, url } = node;
 
-	for (const node of definitionNodes) {
-		const { range, label, url } = node;
-		const match = url.match(/^([./].*?)?(?:#(.*?)(\d*?))?$/);
-
-		if (imports[label] || !match) {
+		if (urls[label]) {
 			continue;
 		}
 
-		const [path = '.', name, number] = match.slice(1);
-		const rangeString = range.slice(0, 2).join('-');
-		const importObject = getObject(imports, path, {});
-		const importRef = getObject(importObject, name || '', [rangeString]);
-		refs[label] = importRef;
-		fileRefs[label] = importObject;
-		numberRefs[label] = number;
+		urls[label] = url;
 	}
+	
+	for (let i = snips.length - 1; i >= 0; i--) {
+		const snip = snips[i];
+		const { range } = snip;
+		const [rangeStart] = range;
 
-	for (const node of headerNodes) {
-		const { range = [0] } = node || {};
-		const rangeStart = range[0];
-		const referenceIndex = referenceNodes.findIndex(({ range }) => range[0] < rangeStart);
-		const referenceCount = referenceIndex === -1 ? referenceNodes.length : referenceIndex;
-		const references = referenceNodes.splice(0, referenceCount).reverse();
-		const id = node ? processHeaderId(node) : '';
-		const text = node ? processText(node) : '';
-
-		Object.assign(node, { id, text, references, end: prevStart });
+		processId(snip);
+		range[1] = prevStart;
 		prevStart = rangeStart;
-	}
 
-	const headerStack = [];
-	headerNodes.reverse();
+		const linkIndex = links.findLastIndex(({ range }) => range[0] >= rangeStart);
+		const snipLinks = linkIndex === -1 ? [] : links.splice(linkIndex);
 
-	for (const node of headerNodes) {
-		const { range, depth, id, text, references, end } = node;
-		let key = id;
+		const referenceIndex = references.findLastIndex(({ range }) => range[0] >= rangeStart);
+		const snipReferences = referenceIndex === -1 ? [] : references.splice(referenceIndex);
 
-		if (!key || locals[key]) {
-			while (locals[nextKeyIndex]) {
-				nextKeyIndex++;
-			}
+		for (const reference of snipReferences) {
+			const { label } = reference;
+			const url = urls[label];
 
-			key = String(nextKeyIndex);
-		}
-
-		headerStack.splice(0, headerStack.length - depth + 1, key);
-		const parentKey = headerStack[1];
-
-		const localArray = [`${range[0]}-${end}${parentKey ? `#${parentKey}` : ''}${text && ` ${text}`}`];
-		locals[key] = localArray;
-
-		if (key === id) {
-			exports.push(key);
-		}
-
-		for (const node of references) {
-			const { label } = node;
-			const text = processText(node);
-			let [, hash, name = '', number] = text.match(/(?:#((.*?)(\d*?)))?\s*$/);
-			let ref = refs[label];
-
-			if (hash) {
-				const importObject = fileRefs[label];
-
-				if (name) {
-					ref = importObject ? getObject(importObject, name, ref.slice(0, 1)) : undefined;
-				}
-			} else {
-				number = numberRefs[label];
-			}
-
-			if (!ref) {
+			if (!url) {
 				continue;
 			}
 
-			let keyIndex = ref.findIndex(keyString => (new RegExp(`^${key}( |$)`)).test(keyString));
-
-			if (keyIndex === -1) {
-				ref.push(key);
-				keyIndex = 1;
-			}
-
-			if (number && !(new RegExp(` ${number}( |$)`)).test(ref[keyIndex])) {
-				const parts = ref[keyIndex].split(' ');
-				parts.push(number);
-				ref[keyIndex] = parts.join(' ');
-			}
+			snipLinks.push({ url });
 		}
+
+		Object.assign(snip, {
+			text: getText(snip),
+			links: snipLinks,
+		});
+	}
+	
+	const imports = {};
+	const locals = {};
+	const stack = [];
+	let index = 0;
+
+	for (const snip of snips) {
+		const { range, depth, text, id = '', links } = snip;
+		const [start, finish] = range;
+		let key = id;
+	
+		if (depth && (!key || locals[key])) {
+			while (locals[index]) {
+				index++;
+			}
+
+			key = String(index);
+		}
+
+		for (const link of links) {
+			const { url } = link;
+			const [, path = '.', name = ''] = url.match(/^([./].*?)?(?:#(.*?))?$/);
+		
+			const location = getObject(imports, path, {});
+			const remote = getObject(location, name, []);
+			remote.push(key);
+		}
+
+		stack.splice(0, stack.length - depth + 1, key);
+		const parent = stack[1];
+		const info = `${start}-${finish}${parent ? `#${parent}` : ''}${text ? ` ${text}` : ''}`;
+		locals[key] = info;
+
+		if (!id || key !== id) {
+			continue;
+		}
+
+		locals[''] += ` ${id}`;
 	}
 
-	return {
-		...imports,
-		'': {
-			'': [`0-${prevStart}${exports.length ? ` ${exports.join(' ')}`: ''}`],
-			...locals,
-		},
-	};
+	return { ...imports, '': locals };
 }
 
 // TODO: allow override parse and render functions when running the CLI command

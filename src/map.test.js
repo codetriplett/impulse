@@ -58,17 +58,16 @@ describe('clearNode', () => {
 		const map = {
 			'/parent': {
 				'': {
-					remote: ['15-45 Header', '/node#local'],
+					remote: ['15-45 Header', '/node'],
 					'': ['0-15 remote'],
 				},
 			},
 			'/node': {
 				'/parent': {
-					remote: ['15-45 Header', 'local'],
-					'': ['0-14'],
+					remote: ['local'],
 				},
 				'': {
-					local: ['15-45 Header', '/child#'],
+					local: ['15-45 Header', '/child'],
 					'': ['0-15 local'],
 				},
 			},
@@ -77,8 +76,7 @@ describe('clearNode', () => {
 		const actual = clearNode(map, '/node');
 
 		expect(actual).toEqual({
-			local: ['/child#'],
-			'': [],
+			local: ['/child'],
 		});
 
 		expect(map).toEqual({
@@ -89,7 +87,9 @@ describe('clearNode', () => {
 				},
 			},
 			'/node': {
-				'': actual,
+				'': {
+					local: ['', '/child'],
+				},
 			},
 		});
 	});
@@ -98,14 +98,12 @@ describe('clearNode', () => {
 		const map = {
 			'/parent': {
 				'': {
-					remote: ['', '/node#local'],
-					'': [''],
+					remote: ['', '/node'],
 				},
 			},
 			'/node': {
 				'/parent': {
-					remote: ['15-45 Header', 'local'],
-					'': ['0-14'],
+					remote: ['local'],
 				},
 				'': {
 					local: ['15-45 Header'],
@@ -155,74 +153,31 @@ describe('updateNode', () => {
 			'/file': {
 				'': {
 					main: ['1-2 File Header'],
-					'': ['2-2'],
+					'': ['2-2 main'],
 				},
 			},
 		};
 
 		updateNode(map, '/root', {
 			'./file': {
-				main: ['0-1', 'local'],
+				main: ['local'],
 			},
 			'': {
-				local: ['1-2 Root Header'],
-				'': ['2-2 local'],
+				local: '1-2 Root Header',
+				'': '2-2 local',
 			},
 		});
 
 		expect(map).toEqual({
 			'/file': {
 				'': {
-					main: ['1-2 File Header', '/root#local'],
-					'': ['2-2'],
-					// main: ['1-2', 'Main Header', '/root#local local#123'],
-					// if multiple locals in file use it '/root#first#second first#123 second #123'
+					main: ['1-2 File Header', '/root'],
+					'': ['2-2 main'],
 				},
 			},
 			'/root': {
 				'/file': {
-					main: ['0-1', 'local'],
-				},
-				'': {
-					local: ['1-2 Root Header'],
-					'': ['2-2 local'],
-				},
-			},
-		});
-	});
-	
-	it('adds variations', () => {
-		const map = {
-			'/file': {
-				'': {
-					main: ['1-2 File Header'],
-					'': ['2-2'],
-				},
-			},
-		};
-
-		updateNode(map, '/root', {
-			'./file': {
-				main: ['0-1', 'local 123'],
-			},
-			'': {
-				local: ['1-2 Root Header'],
-				'': ['2-2 local'],
-			},
-		});
-
-		expect(map).toEqual({
-			'/file': {
-				'': {
-					main: ['1-2 File Header', '/root#local local#123'],
-					'': ['2-2'],
-					// main: ['1-2', 'Main Header', '/root#local local#123'],
-					// if multiple locals in file use it '/root#first#second first#123 second #123'
-				},
-			},
-			'/root': {
-				'/file': {
-					main: ['0-1', 'local 123'],
+					main: ['local'],
 				},
 				'': {
 					local: ['1-2 Root Header'],
@@ -237,24 +192,23 @@ describe('updateNode', () => {
 
 		updateNode(map, '/root', {
 			'./file': {
-				main: ['0-1', 'local'],
+				main: ['local'],
 			},
 			'': {
-				local: ['1-2 Root Header'],
-				'': ['2-2 local'],
+				local: '1-2 Root Header',
+				'': '2-2 local',
 			},
 		});
 
 		expect(map).toEqual({
 			'/file': {
 				'': {
-					main: ['', '/root#local'],
-					'': [''],
+					main: ['', '/root'],
 				},
 			},
 			'/root': {
 				'/file': {
-					main: ['0-1', 'local'],
+					main: ['local'],
 				},
 				'': {
 					local: ['1-2 Root Header'],
@@ -268,13 +222,12 @@ describe('updateNode', () => {
 		const map = {
 			'/file': {
 				'': {
-					main: ['', '/root#local'],
-					'': [''],
+					main: ['', '/root'],
 				},
 			},
 			'/root': {
 				'/file': {
-					main: ['0-1', 'local'],
+					main: ['local'],
 				},
 				'': {
 					local: ['1-2 Root Header'],
@@ -285,21 +238,21 @@ describe('updateNode', () => {
 
 		updateNode(map, '/file', {
 			'': {
-				main: ['1-2 File Header'],
-				'': ['2-2 main'],
+				main: '1-2 File Header',
+				'': '2-2 main',
 			},
 		});
 
 		expect(map).toEqual({
 			'/file': {
 				'': {
-					main: ['1-2 File Header', '/root#local'],
+					main: ['1-2 File Header', '/root'],
 					'': ['2-2 main'],
 				},
 			},
 			'/root': {
 				'/file': {
-					main: ['0-1', 'local'],
+					main: ['local'],
 				},
 				'': {
 					local: ['1-2 Root Header'],
@@ -314,39 +267,37 @@ describe('updateNode', () => {
 
 		updateNode(map, '/folder/file', {
 			'../shallow': {
-				main: ['0-1', 'local']
+				main: ['local']
 			},
 			'./deep': {
-				main: ['0-1', 'local']
+				main: ['local']
 			},
 			'': {
-				local: ['1-2'],
-				'': ['2-2 local'],
+				local: '1-2 Folder File Header',
+				'': '2-2 local',
 			}
 		});
 
 		expect(map).toEqual({
 			'/shallow': {
 				'': {
-					main: ['', '/folder/file#local'],
-					'': [''],
+					main: ['', '/folder/file'],
 				},
 			},
 			'/folder/deep': {
 				'': {
-					main: ['', '/folder/file#local'],
-					'': [''],
+					main: ['', '/folder/file'],
 				},
 			},
 			'/folder/file': {
 				'/shallow': {
-					main: ['0-1', 'local'],
+					main: ['local'],
 				},
 				'/folder/deep': {
-					main: ['0-1', 'local'],
+					main: ['local'],
 				},
 				'': {
-					local: ['1-2'],
+					local: ['1-2 Folder File Header'],
 					'': ['2-2 local'],
 				},
 			},

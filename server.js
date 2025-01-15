@@ -45,6 +45,12 @@ createServer(({ url }, res) => {
 
 	const regex = /^(?:\/+)?(.*?)(?:\.([^/.?#]*)|\/*)?(?:\?(.*?))?$/;
 	let [, path = '', extension] = url.match(regex);
+
+	if (!extension) {
+		path = 'index';
+		extension = 'html';
+	}
+
 	const type = types[extension];
 	const options = !/^image\/(?!svg)/.test(type) ? ['utf8'] : [];
 	path += `.${extension}`;

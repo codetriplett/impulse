@@ -19,124 +19,98 @@ export function getPath (rootPath, relativePath) {
 	return `/${sourcePath.join('/')}`;
 }
 
-export function clearNode (map, nodePath) {
-	const existingNode = map[nodePath];
+export function clearNode (map, path) {
+	const existingNode = map[path];
+
+	if (!existingNode) {
+		return;
+	}
+
+	const { '': locals, ...imports } = existingNode;
 	const exportPaths = {};
 	let hasExports = false;
 
-	if (existingNode) {
-		const { '': existingLocals, ...existingImports } = existingNode;
+	for (const [importPath, existingImport] of Object.entries(imports)) {
+		const importNode = map[importPath];
+		const { '': locals } = importNode;
+		const names = Object.keys(existingImport);
 
-		for (const [importPath, existingImport] of Object.entries(existingImports)) {
-			const importNode = map[importPath];
-			const { '': locals } = importNode;
-			const names = Object.keys(existingImport);
+		for (const name of names) {
+			const array = locals[name];
+			const index = array?.indexOf?.(path) || 0;
 
-			for (const name of names) {
-				const array = locals[name];
-
-				if (!array) {
-					continue;
-				}
-
-				const index = array.slice(1).findIndex(hashPath => {
-					if (typeof hashPath !== 'string') {
-						return;
-					}
-
-					const [path] = hashPath.split('#');
-					return path === nodePath;
-				});
-
-				if (index < 0) {
-					continue;
-				}
-				
-				array.splice(index + 1, 1);
-
-				if (array.length < 2 && !array[0]) {
-					delete locals[name];
-				}
+			if (index < 1) {
+				continue;
 			}
+			
+			array.splice(index, 1);
 
-			if (Object.keys(locals).length < 2 && locals[''].length < 2 && Object.keys(importNode).length < 2) {
-				delete map[importPath];
+			if (!array[0] && array.length < 2) {
+				delete locals[name];
 			}
 		}
 
-		for (const [name, array] of Object.entries(existingLocals)) {
-			array[0] = '';
-
-			if (array.length > 1) {
-				exportPaths[name] = array.slice(1);
-				hasExports = true;
-			}
+		if (Object.keys(importNode).length < 2 && !Object.keys(locals).length) {
+			delete map[importPath];
 		}
 	}
 
-	if (hasExports) {
-		if (!exportPaths['']) {
-			exportPaths[''] = [];
+	for (const [name, array] of Object.entries(locals)) {
+		if (array.length < 2) {
+			delete locals[name];
+			continue;
 		}
 
-		map[nodePath] = { '': exportPaths };
-		return exportPaths;
+		array[0] = '';
+		exportPaths[name] = array.slice(1);
+		hasExports = true;
 	}
 
-	delete map[nodePath];
+	if (!hasExports) {
+		delete map[path];
+		return;
+	}
+
+	map[path] = { '': locals };
+	return exportPaths;
 }
 
-export function updateNode (map, path, templateNode) {
+export function updateNode (map, path, relativeNode) {
 	const exportPaths = clearNode(map, path) || {};
 
-	if (!templateNode) {
+	if (!relativeNode) {
 		return;
 	}
 
 	const folders = path.slice(1).split('/');
-	const { '': locals, ...relativeImports } = templateNode;
+	const { '': infos, ...relativeImports } = relativeNode;
 	const absoluteImports = {};
+	const locals = {};
 
-	for (const [name, array] of Object.entries(locals)) {
-		const relativePaths = exportPaths[name];
-
-		if (!relativePaths) {
-			continue;
-		}
-
-		const absolutePaths = relativePaths.map(path => getPath(folders, path));
-
-		if (absolutePaths) {
-			array.push(...absolutePaths);
-		}
+	for (const [name, info] of Object.entries(infos)) {
+		const paths = exportPaths[name] || [];
+		locals[name] = [info, ...paths];
 	}
 
 	for (const [relativePath, importObject] of Object.entries(relativeImports)) {
 		const sourcePath = getPath(folders, relativePath);
-		const mapNode = getObject(map, sourcePath, { '': { '': [''] } });
-		const mapExports = mapNode[''];
+		const mapNode = getObject(map, sourcePath, { '': {} });
+		const mapLocals = mapNode[''];
 		absoluteImports[sourcePath] = importObject;
 
-		for (const [name, array] of Object.entries(importObject)) {
-			const exportArray = getObject(mapExports, name, ['']);
-			const variationStrings = [];
+		for (const name in importObject) {
+			const remote = getObject(mapLocals, name, ['']);
+			const index = remote.indexOf(path);
 
-			const hash = array.slice(1).map(string => {
-				const [name, ...numbers] = string.split(' ');
+			if (index !== -1) {
+				continue;
+			}
 
-				if (numbers.length) {
-					variationStrings.push(`${name}#${numbers.join('#')}`);
-				}
-
-				return name;
-			}).join('#');
-
-			const hashPath = `${path}${hash ? `#${hash}` : ''}${variationStrings.length ? ` ${variationStrings.join(' ')}` : ''}`;
-			exportArray.push(hashPath);
+			remote.push(path);
 		}
 	}
 
-	const node = { ...absoluteImports, '': locals };
-	map[path] = node;
-	return node;
+	const absoluteNode = { ...absoluteImports, '': locals };
+	map[path] = absoluteNode;
+	return absoluteNode;
 }

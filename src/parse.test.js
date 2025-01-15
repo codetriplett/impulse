@@ -368,6 +368,12 @@ describe.only('parseMD', () => {
 	// - also store the parent headline of each as part of the range section (e.g. '15-50#parent Headline' or '15-50# Headline' for H1s
 	// - use the parent along wiht the start index to sort the healines in the side panel
 
+
+
+	// TODO: have first item in each array be for the range (and optional heading), and rest be for local references
+	// - refs for '' give the exports, for other locals give the parent node, and for imports mark which ones use that import
+	// - updateNode will append these internal refs has hashes on info string, and will use the rest of the array for external refs
+	//   - in this case, imports probably can either remain as internal refs (less processing), or just as a string
 	it('file reference', () => {
 		const actual = parseMD(
 `[file]: ./file
@@ -376,211 +382,74 @@ describe.only('parseMD', () => {
 
 		expect(actual).toEqual({
 			'./file': {
-				'': ['0-14', 'local'],
+				'': ['local'],
 			},
 			'': {
-				local: ['15-45 Header'],
-				'': ['0-15 local'],
-			},
-		});
-	});
-
-	it('name reference from file', () => {
-		const actual = parseMD(
-`[file]: ./file
-# Header {#local}
-[File #main][file]`);
-
-		expect(actual).toEqual({
-			'./file': {
-				main: ['0-14', 'local'],
-				'': ['0-14'],
-			},
-			'': {
-				local: ['15-51 Header'],
-				'': ['0-15 local'],
-			},
-		});
-	});
-
-	it('variation reference from file', () => {
-		const actual = parseMD(
-`[file]: ./file
-# Header {#local}
-[File #main123][file]`);
-
-		expect(actual).toEqual({
-			'./file': {
-				main: ['0-14', 'local 123'], // stored as '/file#local local#123' in map
-				'': ['0-14'],
-			},
-			'': {
-				local: ['15-54 Header'],
-				'': ['0-15 local'], // locals after range here denote exports, since locals can reference the metadata sections with just a local #
+				local: '15-45 Header',
+				'': '0-15 local',
 			},
 		});
 	});
 
 	it('name reference', () => {
 		const actual = parseMD(
-`[main]: ./file#main
+`[main]: ./file#remote
 # Header {#local}
 [File][main]`);
 
 		expect(actual).toEqual({
 			'./file': {
-				main: ['0-19', 'local'],
+				remote: ['local'],
 			},
 			'': {
-				local: ['20-50 Header'],
-				'': ['0-20 local'],
+				local: '22-52 Header',
+				'': '0-22 local',
 			},
 		});
 	});
 
-	it('variation reference from name', () => {
+	// MAYBE: don't use special treatment for tags that have number prefix and/or suffix
+	// - creates some confusion around when these are allowed and what they are used for
+	// - complicates map structure as well (requires adding breakdowns of variations after hashPath in string)
+	// - complicates how to render mentions panel
+	// - it might be better to have JS process the tables and lists under headlines for data instead of having to annotate it
+	// GOAL: writing notes should be as simple as possible, just stick to links to directly reference snips under headlines
+
+	it('inline file reference', () => {
 		const actual = parseMD(
-`[main]: ./file#main
-# Header {#local}
-[File #123][main]`);
+`# Header {#local}
+[File](./file)`);
 
 		expect(actual).toEqual({
 			'./file': {
-				main: ['0-19', 'local 123'],
+				'': ['local'],
 			},
 			'': {
-				local: ['20-55 Header'],
-				'': ['0-20 local'],
+				local: '0-32 Header',
+				'': '0-0 local',
 			},
 		});
 	});
 
-	it('default override from name', () => {
+	it('inline snip reference', () => {
 		const actual = parseMD(
-`[main]: ./file#main
-# Header {#local}
-[File #][main]`);
+`# Header {#local}
+[File](./file#remote)`);
 
 		expect(actual).toEqual({
 			'./file': {
-				main: ['0-19', 'local'],
+				remote: ['local'],
 			},
 			'': {
-				local: ['20-52 Header'],
-				'': ['0-20 local'],
+				local: '0-39 Header',
+				'': '0-0 local',
 			},
 		});
 	});
 
-	it('name override from name', () => {
+	it('multiple references', () => {
 		const actual = parseMD(
-`[main]: ./file#main
-# Header {#local}
-[File #other][main]`);
-
-		expect(actual).toEqual({
-			'./file': {
-				main: ['0-19'],
-				other: ['0-19', 'local'],
-			},
-			'': {
-				local: ['20-57 Header'],
-				'': ['0-20 local'],
-			},
-		});
-	});
-	
-	it('variation override from name', () => {
-		const actual = parseMD(
-`[main]: ./file#main
-# Header {#local}
-[File #other123][main]`);
-
-		expect(actual).toEqual({
-			'./file': {
-				main: ['0-19'],
-				other: ['0-19', 'local 123'],
-			},
-			'': {
-				local: ['20-60 Header'],
-				'': ['0-20 local'],
-			},
-		});
-	});
-
-	it('variation reference', () => {
-		const actual = parseMD(
-`[main123]: ./file#main123
-# Header {#local}
-[File][main123]`);
-
-		expect(actual).toEqual({
-			'./file': {
-				main: ['0-25', 'local 123'],
-			},
-			'': {
-				local: ['26-59 Header'],
-				'': ['0-26 local'],
-			},
-		});
-	});
-
-	it('default override from variation', () => {
-		const actual = parseMD(
-`[main123]: ./file#main123
-# Header {#local}
-[File #][main123]`);
-
-		expect(actual).toEqual({
-			'./file': {
-				main: ['0-25', 'local 123'],
-			},
-			'': {
-				local: ['26-61 Header'],
-				'': ['0-26 local'],
-			},
-		});
-	});
-
-	it('name override from variation', () => {
-		const actual = parseMD(
-`[main123]: ./file#main123
-# Header {#local}
-[File #other][main123]`);
-
-		expect(actual).toEqual({
-			'./file': {
-				main: ['0-25'],
-				other: ['0-25', 'local'],
-			},
-			'': {
-				local: ['26-66 Header'],
-				'': ['0-26 local'],
-			},
-		});
-	});
-
-	it('variation override from variation', () => {
-		const actual = parseMD(
-`[main123]: ./file#main123
-# Header {#local}
-[File #other123][main123]`);
-
-		expect(actual).toEqual({
-			'./file': {
-				main: ['0-25'],
-				other: ['0-25', 'local 123'],
-			},
-			'': {
-				local: ['26-69 Header'],
-				'': ['0-26 local'],
-			},
-		});
-	});
-	
-	it('multiple name references', () => {
-		const actual = parseMD(
-`[main]: ./file#main
+`[main]: ./file#remote
 # First Header {#first}
 [File][main]
 # Second Header {#second}
@@ -588,30 +457,12 @@ describe.only('parseMD', () => {
 
 		expect(actual).toEqual({
 			'./file': {
-				main: ['0-19', 'first', 'second'],
+				remote: ['first', 'second'],
 			},
 			'': {
-				first: ['20-57 First Header'],
-				second: ['57-95 Second Header'],
-				'': ['0-20 first second'],
-			},
-		});
-	});
-
-	it('multiple variation references', () => {
-		const actual = parseMD(
-`[main]: ./file#main
-# Header {#local}
-[File #123][main]
-[File #789][main]`);
-
-		expect(actual).toEqual({
-			'./file': {
-				main: ['0-19', 'local 123 789'],
-			},
-			'': {
-				local: ['20-73 Header'],
-				'': ['0-20 local'],
+				first: '22-59 First Header',
+				second: '59-97 Second Header',
+				'': '0-22 first second',
 			},
 		});
 	});
@@ -624,11 +475,11 @@ describe.only('parseMD', () => {
 
 		expect(actual).toEqual({
 			'./file': {
-				'': ['0-14', '0'],
+				'': ['0'],
 			},
 			'': {
-				0: ['15-36 Header'],
-				'': ['0-15'],
+				0: '15-36 Header',
+				'': '0-15',
 			},
 		});
 	});
@@ -643,12 +494,12 @@ describe.only('parseMD', () => {
 
 		expect(actual).toEqual({
 			'./file': {
-				'': ['0-14', 'local', '0'],
+				'': ['local', '0'],
 			},
 			'': {
-				local: ['15-52 First Header'],
-				0: ['52-89 Second Header'],
-				'': ['0-15 local'],
+				local: '15-52 First Header',
+				0: '52-89 Second Header',
+				'': '0-15 local',
 			},
 		});
 	});
@@ -663,12 +514,12 @@ describe.only('parseMD', () => {
 
 		expect(actual).toEqual({
 			'./file': {
-				'': ['0-14', 'parent', 'child'],
+				'': ['parent', 'child'],
 			},
 			'': {
-				parent: ['15-54 Parent Header'],
-				child: ['54-91#parent Child Header'],
-				'': ['0-15 parent child'],
+				parent: '15-54 Parent Header',
+				child: '54-91#parent Child Header',
+				'': '0-15 parent child',
 			},
 		});
 	});
