@@ -5,36 +5,57 @@
 import { parse } from './parse';
 import { updateNode } from './map';
 import { getObject } from './common';
-import { processId } from './parse';
+import { processId, findByType } from './parse';
 import { createState, onRender } from '@triplett/stew';
 import { parse as parseMDtoAST } from '@textlint/markdown-to-ast';
+
+const { pathname, hash } = window.location;
 
 export const state = createState({
 	// imports: [],
 	// exports: [],
 	files: {},
 	map: {},
-	visibleNodes: [],
-	expandedCitations: [],
-	expandedMentions: [],
+	hash,
+	path: `${pathname}${hash || '#'}`,
+	snips: [],
 	isLeftNavExpanded: true,
-	isRightNavExpanded: false,
+	isRightNavExpanded: true,
 });
 
+function updateFile (path, text, type) {
+	if (type !== 'md') {
+		return;
+	}
+
+	const { map } = state;
+	const node = parse(text, 'md');
+	updateNode(map, path, node);
+}
+
 export function recallSession () {
-	let files, map;
+	let files, map, snips, settings;
 
 	try {
 		files = JSON.parse(window.localStorage.getItem('impulse:files') || '{}');
 		map = JSON.parse(window.localStorage.getItem('impulse:map'));
+		snips = JSON.parse(window.localStorage.getItem('impulse:snips') || '[]');
+		settings = JSON.parse(window.localStorage.getItem('impulse:settings') || '{}');
 	} catch (err) {
 		window.localStorage.removeItem('impulse:files');
 		window.localStorage.removeItem('impulse:map');
+		window.localStorage.removeItem('impulse:snips');
+		window.localStorage.removeItem('impulse:settings');
 		files = {};
+		snips = [];
+		settings = {};
 	}
+
+	Object.assign(state, { files, map, snips, settings });
 
 	if (!map) {
 		map = {};
+		state.map = map;
 
 		for (const [path, text] of Object.entries(files)) {
 			if (!text) {
@@ -42,21 +63,19 @@ export function recallSession () {
 				continue;
 			}
 
-			const node = parse(text, 'md');
-			updateNode(map, path, node);
+			updateFile(path, text, 'md');
 		}
 
 		window.localStorage.setItem('impulse:map', JSON.stringify(map));
 	}
-
-	Object.assign(state, { files, map });
 }
 
 export function storeSession () {
-	const { files, map } = state;
-	window.localStorage.remoteItem('impulse:map'); // in case the localStorage limit is reached
+	const { files, map, snips } = state;
+	window.localStorage.removeItem('impulse:map'); // in case the localStorage limit is reached
 	window.localStorage.setItem('impulse:files', JSON.stringify(files));
 	window.localStorage.setItem('impulse:map', JSON.stringify(map));
+	window.localStorage.setItem('impulse:snips', JSON.stringify(snips));
 }
 
 // show all locals first, regardless of whether they export
@@ -101,37 +120,41 @@ function getCitations (path, registry, focusedNames) {
 		const hashPath = `${path}#${name}`;
 		let child = registry[hashPath];
 
-		if (child?.name === undefined) {
-			if (!child) {
-				child = {};
-				registry[hashPath] = child;
-			}
+		if (!child) {
+			child = {};
+			registry[hashPath] = child;
+		}
 
-			const childCitations = [];
+		citations.push(child);
 
-			Object.assign(child, {
-				path: `${path}#${name}`,
-				name: name,
-				start: start,
-				finish: finish,
+		if (child.name !== undefined) {
+			continue;
+		}
+
+		const childCitations = [];
+
+		Object.assign(child, {
+			path: `${path}#${name}`,
+			name: name,
+			start: start,
+			finish: finish,
+		});
+
+		if (name) {
+			child.heading = heading;
+		}
+
+		for (const [path, object] of Object.entries(imports)) {
+			const names = Object.keys(object).filter(importName => {
+				return object[importName].indexOf(name) !== -1;
 			});
 
-			if (name) {
-				child.heading = heading;
-			}
+			const newCitations = getCitations(path, registry, names);
+			childCitations.push(...newCitations);
+		}
 
-			for (const [path, object] of Object.entries(imports)) {
-				const names = Object.keys(object).filter(importName => {
-					return object[importName].indexOf(name) !== -1;
-				});
-
-				const newCitations = getCitations(path, registry, names);
-				childCitations.push(...newCitations);
-			}
-
-			if (childCitations.length) {
-				child.citations = childCitations;
-			}
+		if (childCitations.length) {
+			child.citations = childCitations;
 		}
 
 		if (name) {
@@ -140,8 +163,6 @@ function getCitations (path, registry, focusedNames) {
 			const children = getObject(node, 'children', [])
 			children.push(child);
 		}
-		
-		citations.push(child);
 	}
 
 	return citations;
@@ -222,12 +243,17 @@ function getMentions (path, depthMap = {}, depth = 0, rootPath) {
 // 	}
 // }
 
-// if (typeof window !== 'undefined') {
-// 	window.onhashchange = () => {
-// 		loadPath();
-// 		storeSession();
-// 	};
-// }
+if (typeof window !== 'undefined') {
+	window.onhashchange = () => {
+		const { pathname, hash } = window.location;
+		const path = `${pathname}${hash || '#'}`;
+
+		Object.assign(state, {
+			hash,
+			path,
+		});
+	};
+}
 
 // show import list and info page for path that is found but not yet loaded
 // - paths to folders should show the imports of all files inside it
@@ -259,154 +285,278 @@ function renderChildren (children) {
 	];
 }
 
-function renderCitation (hashPath, citationsRegistry) {
-	const { expandedCitations } = state;
+function scopeTree (allNodes, ...ranges) {
+	return allNodes.filter(node => {
+		const { type, range } = node;
+		return type === 'Definition' || ranges.some(([start, end]) => range[0] >= start && range[1] <= end);
+	});
+}
+
+function renderCitation (hashPath, manifest) {
+	const { path, snips } = state;
+
+	if (hashPath === path) {
+		return;
+	}
+
+	const isActive = allCitations.values().some(citation => hashPath === citation.path);
 
 	return memo => {
 		const [path] = hashPath.split('#');
 
 		if (hashPath !== memo[0]) {
 			const { files } = state;
-			const { start, finish } = citationsRegistry[hashPath];
+			const { start, finish } = manifest[hashPath];
 			const file = files[path];
-			const section = file.slice(start, finish);
-			const astNodes = parseMDtoAST(section).children;
+			const astNodes = parseMDtoAST(file).children;
+			const scopedNodes = scopeTree(astNodes, [start, finish]);
 			memo[0] = hashPath;
-			memo[1] = astNodes;
+			memo[1] = scopedNodes;
+			memo[2] = prepareDefinitions(astNodes);
 		}
 
-		const astNodes = memo[1];
+		const [scopedNodes, definitions] = memo.slice(1);
 
-		return ['div', { className: 'snip' },
+		return ['div', { className: `snip ${isActive ? '' : 'snip-inactive'}` },
 			['button', {
 				className: 'close',
 				onclick: () => {
-					const index = expandedCitations.indexOf(path);
-					const newExpandedCitations = [...expandedCitations];
-					newExpandedCitations.splice(index, 1);
-					state.expandedCitations = newExpandedCitations;
+					const index = snips.indexOf(path);
+					const newSnips = [...snips];
+					newSnips.splice(index, 1);
+					state.snips = newSnips;
+					storeSession();
 				},
 			}, '✕'],
-			...astNodes.map(renderAstNode),
+			...scopedNodes.map(node => renderAstNode(node, definitions, path)),
 		];
 	};
 }
 
-function renderLeftMenu (leftMenu, citations, citationsRegistry) {
-	const { expandedCitations } = state;
-	let { children = [] } = leftMenu;
+let allCitations;
+
+function renderLeftMenu (manifest, pathname, ...hashes) {
+	const { snips } = state;
+	let { children = [] } = manifest[`${pathname}#`] || {};
 
 	if (children.length === 1) {
-		children = children[0].children || [];
+		const { children: nestedChildren = [], name } = children[0];
+		children = nestedChildren;
+
+		if (hashes.indexOf('') !== -1) {
+			hashes.push(`#${name}`);
+		}
 	}
-	
+
+	allCitations = new Set(hashes.map(hash => {
+		const { citations = [] } = hash && manifest[`${pathname}${hash}`] || {};
+		return citations;
+	}).flat());
+
 	return ['div', {
-		className: `side left-side ${expandedCitations.length ? 'with-snips' : ''}`,
+		className: 'navigation',
 	},
 		renderChildren(children),
-		!citations?.size ? null :  ['ul', { className: 'citations' },
-			...citations.values().map(citation => {
+		['ul', { className: 'citations' },
+			...allCitations.values().map(citation => {
 				const { path, heading } = citation;
-				const isExpanded = expandedCitations.indexOf(path) !== -1;
+				const pathIndex = snips.indexOf(path);
 
 				return ['li', null,
-					isExpanded
-						? renderCitation(path, citationsRegistry)
-						: ['button', {
-							className: 'citation-button',
-							onclick: () => {
-								const newExpandedCitations = [...expandedCitations];
-								newExpandedCitations.push(path);
-								state.expandedCitations = newExpandedCitations;
-							},
-						}, heading],
+					['button', {
+						className: `citation-button ${pathIndex !== -1 ? 'citation-button-active' : ''}`,
+						onclick: () => {
+							const newSnips = [...snips];
+
+							if (pathIndex === -1) {
+								newSnips.push(path);
+							} else {
+								newSnips.splice(pathIndex, 1);
+							}
+
+							Object.assign(state, {
+								snips: newSnips,
+								isRightNavExpanded: true,
+							});
+
+							storeSession();
+						},
+					}, heading],
 				];
 			}),
 		],
 	];
 }
 
+function renderRightMenu (manifest) {
+	const { path, snips } = state;
+
+	if (snips.length === 0 || snips.length === 1 && snips[0] === path) {
+		return;
+	}
+
+	return ['ul', {
+		className: 'snips',
+	},
+		...snips.map(path => renderCitation(path, manifest)),
+	];
+}
+
 let headerIndex = 0;
 
-function renderAstNode (node) {
-	switch (node.type) {
+function renderAstNode (node, definitions, remotePath = '') {
+	const { type, children } = node;
+
+	if (type === 'Header') {
+		processId(node);
+	}
+
+	const childElements = children ? children.map(node => renderAstNode(node, definitions, remotePath)) : [];
+
+	switch (type) {
 		case 'Header': {
-			const { depth, children } = node;
-			processId(node);
-			const id = node.id || headerIndex++;
-			return [depth, { id }, ...children.map(renderAstNode)];
+			const { id = headerIndex++, depth } = node;
+
+			return [depth, { id },
+				['a', { href: `${remotePath}#${id}` }, ...childElements],
+			];
 		}
 		case 'Paragraph': {
-			const { children } = node;
-			return ['p', null, ...children.map(renderAstNode)];
+			return ['p', null, ...childElements];
 		}
 		case 'Str': {
 			const { value } = node;
 			return value;
 		}
+		case 'LinkReference': {
+			const { label } = node;
+			const href = definitions[label];
+
+			if (!href) {
+				return;
+			}
+
+			return ['a', {
+				href,
+			}, ...childElements];
+		}
 	}
 }
 
-// use intersection observer to detect which headings have entered and exited view
-// - send names of all headings in view
-// - wait until MD is rendered to HTML first
-function gatherCitations (visibleNodes) {
-	return new Set(visibleNodes.map(({ citations = [] }) => citations).flat());
+// TODO: render immediate mentions, but include mentions of mentions when expanded
+
+// TODO: finish right nav, with similar behavior as left nav (tag hierarchy on right, mentions below)
+
+// TODO: try parallel mode which displays two docs side by side, and  lines up snips with identical ids
+// - useful for studying parallel histories, e.g. events by year
+// - use hash as path
+
+// TODO: tag overview, #tag
+// - from home page path
+
+// TODO: edit mode, #/path/to/file
+// - from home page path
+// - edit file directly
+
+// TODO: CMS, /path/to/template#/path/to/page
+// - will render form and preview of page (if there is a js file at path to page)
+// - js file will accept json as props and returns either string or object (to use directly in DOM), or Array or function (to render with stew)
+
+function resizeTextarea (ref) {
+	const [textarea] = ref;
+	textarea.style.height = '0px';
+	const { scrollHeight } = textarea;
+	textarea.style.height = `${scrollHeight}px`;
 }
 
-// use this for now to render all citations, regardless of whether they are in view
-function gatherNodes (node) {
-	const { children = [] } = node;
-	const nodes = children.map(gatherNodes).flat();
-	return [node, ...nodes];
-}
+function renderEditor (memo) {
+	const { files, hash } = state;
+	const [prevHash] = memo;
+	const path = hash.slice(1);
+	const ref = [];
 
-function renderApp (memo) {
-	const { files, map, visibleNodes, isLeftNavExpanded, isRightNavExpanded } = state;
-	const { pathname } = window.location;
-	const [prevPath] = memo;
-
-	if (pathname !== prevPath) {
-		const file = files[pathname];
-		memo[0] = pathname;
-		memo[1] = parseMDtoAST(file).children; // TODO: process id on headers (remove from string and add id prop)
-		definitions = {}; // TODO: scan for definitions
-
-		const citations = {};
-		getCitations(pathname, citations);
-		memo[2] = citations;
-		memo[3] = citations[`${pathname}#`];
-
-		// memo[4] = getMentions(pathname);
+	if (hash !== prevHash) {
+		memo[0] = hash;
+		memo[1] = files[path];
 	}
 
-	const [astNodes, citationsRegistry, leftMenu, rightMenu, prevVisibleNodes] = memo.slice(1);
-
-	if (visibleNodes !== prevVisibleNodes) {
-		memo[5] = visibleNodes;
-		memo[6] = gatherCitations(visibleNodes);
-	}
-
-	const [citations] = memo.slice(6);
+	const file = memo[1];
 
 	onRender(() => {
-		if (pathname === prevPath) {
-			return;
-		}
-
-		Object.assign(state, {
-			visibleNodes: gatherNodes(leftMenu),
-			expandedCitations: [],
-			expandedMentions: [],
-		});
+		resizeTextarea(ref);
 	});
 
+	return ['div', {
+		className: 'app',
+	},
+		['div', {
+			className: 'main',
+		},
+			['textarea', {
+				className: 'editor',
+				ref,
+				onkeydown: () => {
+					resizeTextarea(ref);
+				},
+				onkeyup: () => {
+					resizeTextarea(ref);
+				},
+			}, file],
+			['button', {
+				className: 'save',
+				onclick: () => {
+					const [textarea] = ref;
+					updateFile(path, textarea.value, 'md');
+					storeSession();
+					window.location.reload();
+				},
+			}, '🖫'],
+		],
+	];
+}
+
+function prepareDefinitions (astNodes) {
+	const definitionNodes = findByType(astNodes, 'Definition');
+	const definitions = {};
+
+	for (const node of definitionNodes) {
+		const { label, url } = node;
+		definitions[label] = url;
+	}
+
+	return definitions;
+}
+
+// TODO: render markdown if exists in file, otherwise use path to fetch js file to render HTML
+function renderPage (memo) {
+	const { files, hash, path, isLeftNavExpanded, isRightNavExpanded, snips } = state;
+	const { pathname } = window.location;
+	const [prevPath, prevHash] = memo;
+
+	if (pathname !== prevPath || hash !== prevHash) {
+		memo[0] = pathname;
+		memo[1] = hash;
+
+		if (pathname !== prevPath) {
+			const file = files[pathname];
+			const astNodes = parseMDtoAST(file).children;
+			memo[2] = astNodes; // TODO: process id on headers (remove from string and add id prop)
+			memo[3] = prepareDefinitions(astNodes);
+		}
+
+		const manifest = {};
+		memo[4] = manifest;
+		getCitations(pathname, manifest);
+		// getMentions(pathname, citations);
+	}
+
+	const [astNodes, definitions, manifest] = memo.slice(2);
 	headerIndex = 0;
 
 	return ['div', {
 		className: 'app',
 	},
-		isLeftNavExpanded && renderLeftMenu(leftMenu, citations, citationsRegistry),
+		isLeftNavExpanded && renderLeftMenu(manifest, pathname, hash),
 		['div', {
 			className: 'main',
 		},
@@ -416,121 +566,76 @@ function renderApp (memo) {
 					state.isLeftNavExpanded = !isLeftNavExpanded;
 				},
 			}, '≡'],
-			['button', {
+			snips.length > 0 && (snips.length > 1 || snips[0] !== path) && ['button', {
 				className: 'expand-right',
 				onclick: () => {
 					state.isRightNavExpanded = !isRightNavExpanded;
 				},
 			}, '#'],
-			...astNodes.map(renderAstNode),
+			...astNodes.map(node => renderAstNode(node, definitions)),
 		],
-		isRightNavExpanded && ['div', {
-			className: 'side',
-		},
-			['ul', null,
-				['li', null, 'Example Mention'],
-			],
-		],
+		isRightNavExpanded && renderRightMenu(manifest),
 	];
+}
 
+function renderHomePage (memo) {
+	return ['p', null, 'Home Page'];
+}
 
+function renderMap (memo) {
+	return ['p', null, 'map'];
+}
 
+function renderForm (memo) {
+	return ['p', null, 'form'];
+}
 
-	// const { tabs, files, showImports, showExports, showImportSettings, showExportSettings } = state;
-	// const [prevPath, prevFiles, prevImports, prevExports] = memo;
-	// const { codeRef } = refs;
-	// const { index: activeTabIndex } = tabs[0];
-	// const activeTab = getTab();
-	// const path = getPath() || '';
-	// const isFile = !!path;
-	// let imports = prevImports;
-	// let exports = prevExports;
+function renderApp (memo) {
+	const { hash} = state;
+	const { pathname } = window.location;
 
-	// if (path !== prevPath || files !== prevFiles) {
-	// 	imports = getImports(path);
-	// 	exports = getExports(path);
-	// 	memo.splice(0, 4, path, files, imports, exports);
+	if (pathname !== '/') {
+		if (!hash || !hash.startsWith('#/')) {
+			return renderPage;
+		} else {
+			return renderForm;
+		}
+	} else {
+		if (!hash || hash === '#') {
+			return renderHomePage;
+		} else if (hash.startsWith('#/')) {
+			return renderEditor;
+		}
+	}
 
-	// 	// TODO: change stew to ignore boolean true, like it does for false, instead of keeping existing node?
-	// 	// - it messes with layouts that might have set true for a different expression
-	// 	// - use ref in layout instead, since those are seen as objects which are left alone
-	// 	// if (path && imports === prevImports && exports === prevExports) {
-	// 	// 	return true;
-	// 	// }
-	// }
-
-	// const tabPlacement = activeTabIndex === 0 ? tabs.length === 2 ? 'only' : 'first' : activeTabIndex === tabs.length - 2 ? 'last' : 'middle';
-	// const hasImports = showImports && imports;
-	// const hasExports = showExports && exports;
-
-	// onRender(() => {
-	// 	if (path !== prevPath) {
-	// 		const [input] = codeRef
-
-	// 		if (input) {
-	// 			if (path) {
-	// 				input.value = files[path];
-	// 			}
-
-	// 			input.focus();
-	// 			input.setSelectionRange(0, 0);
-	// 		}
-	// 	}
-	// });
-
-	// return ['div', { className: 'app' },
-	// 	activeTab && ['', null,
-	// 		['ul', { className: 'tabs' },
-	// 			['li', { className: `tab list-tab ${hasImports ? 'tab-active' : ''}` },
-	// 				['button', {
-	// 					className: 'tab-button',
-	// 					disabled: !imports || !isFile,
-	// 					onclick: () => state.showImports = !showImports,
-	// 				}, 'Imports'],
-	// 				['button', {
-	// 					className: 'tab-icon',
-	// 					onclick: () => state.showImportSettings = !showImportSettings,
-	// 				}, '☰'],
-	// 			],
-	// 			...tabs.slice(1).map((tab, i) => {
-	// 				return ['li', { className: `tab ${tab === activeTab ? 'tab-active' : ''} tab-${tabPlacement}` },
-	// 					['div', { className: 'tab-button-wrapper' },
-	// 						['button', {
-	// 							className: 'tab-button',
-	// 							onclick: () => switchTab(i),
-	// 						}, tab[0].name],
-	// 					],
-	// 					['button', {
-	// 						className: 'tab-icon',
-	// 						onclick: () => closeTab(i),
-	// 					}, '✕'],
-	// 				];
-	// 			}),
-	// 			['li', { className: `tab list-tab ${hasExports ? 'tab-active' : ''}` },
-	// 				['button', {
-	// 					className: 'tab-button',
-	// 					disabled: !exports || !isFile,
-	// 					onclick: () => state.showExports = !showExports,
-	// 				}, 'Exports'],
-	// 				['button', {
-	// 					className: 'tab-icon',
-	// 					onclick: () => state.showExportSettings = !showExportSettings,
-	// 				}, '☰'],
-	// 			],
-	// 		],
-	// 		['div', { className: 'editor-wrapper' },
-	// 			['div', { className: 'editor' },
-	// 				// TODO: fix stew issue where empty string (path) doesn't remove preview list element
-	// 				hasImports && renderImports(imports, showImportSettings, activeTab),
-	// 				path ? renderTab(activeTab, tabPlacement) : renderMenu(),
-	// 				hasExports && renderList(exports, 'exports', showExportSettings, activeTab),
-	// 			],
-	// 		],
-	// 	],
-	// ];
+	return renderMap;
 }
 
 if (typeof window !== 'undefined') {
 	recallSession();
+
+	const root = document.querySelector(':root');
+	const { theme = 'dark' } = state.settings;
+
+	if (theme === 'dark') {
+		root.style.setProperty('--page-background', '#333');
+		root.style.setProperty('--paper-background', '#222');
+		root.style.setProperty('--paper-shadow', '#111');
+		root.style.setProperty('--paper-font-color', '#ccc');
+		root.style.setProperty('--paper-inactive-background', '#333');
+		root.style.setProperty('--button-background', '#444');
+		root.style.setProperty('--button-border-color', '#555');
+		root.style.setProperty('--button-font-color', '#777');
+		root.style.setProperty('--button-hover-background', '#555');
+		root.style.setProperty('--button-hover-border-color', '#666');
+		root.style.setProperty('--button-hover-font-color', '#777');
+		root.style.setProperty('--navigation-font-color', '#ccc');
+		root.style.setProperty('--reference-font-color', '#999');
+		root.style.setProperty('--reference-active-background', '#555');
+		root.style.setProperty('--divider-color', '#777');
+		root.style.setProperty('--link-font-color', '#4b4bde');
+		root.style.setProperty('--link-visited-font-color', '#8d54c1');
+	}
+
 	stew('#app', renderApp);
 }

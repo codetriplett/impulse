@@ -1,7 +1,7 @@
 html,
 body {
 	margin: 0;
-	background: #eee;
+	background: var(--page-background);
 	overflow-x: hidden;
 }
 * {
@@ -9,45 +9,96 @@ body {
 }
 
 body {
-	padding: 60px 0;
+	padding: 15px;
+}
+
+:root {
+	--page-background: #eee;
+	--paper-background: #fff;
+	--paper-shadow: #ccc;
+	--paper-font-color: #000;
+	--paper-inactive-background: #eee;
+	--button-background: #eee;
+	--button-border-color: #ddd;
+	--button-font-color: #777;
+	--button-hover-background: #ddd;
+	--button-hover-border-color: #ccc;
+	--button-hover-font-color: #777;
+	--navigation-font-color: #000;
+	--reference-font-color: #555;
+	--reference-active-background: #ccc;
+	--divider-color: #777;
+	--link-font-color: #00e;
+	--link-visited-font-color: #551a8b;
+}
+
+h1 a:only-child,
+h2 a:only-child,
+h3 a:only-child,
+h4 a:only-child,
+h5 a:only-child,
+h6 a:only-child {
+	position: relative;
+	text-decoration: none;
+	color: var(--paper-font-color);
+}
+h1 a:only-child:hover:after,
+h2 a:only-child:hover:after,
+h3 a:only-child:hover:after,
+h4 a:only-child:hover:after,
+h5 a:only-child:hover:after,
+h6 a:only-child:hover:after {
+	content: '#';
+	position: absolute;
+	left: calc(100% + 5px);
+}
+
+a {
+	color: var(--link-font-color);
+}
+a:visited {
+	color: var(--link-visited-font-color);
 }
 
 .app {
 	display: flex;
 	justify-content: center;
 	gap: 15px;
-	padding: 0 15px;
 }
 
-.side {
-	flex: 0 0.5 200px;
-}
-.side.with-snips {
-	flex: 0 1 640px;
-}
-.side ul {
+.navigation ul {
+	margin: 0;
+	font-size: 17px;
 	list-style: none;
 }
-
-.left-side {
-	text-align: right;
-}
-.left-side > ul {
-	margin: 0;
+.navigation > ul {
 	padding: 0;
-	text-align: left;
-	font-size: 17px;
 }
 
 .main,
 .snip {
 	position: relative;
 	padding: 15px;
-	background: white;
-	box-shadow: 0 0 15px 0px #ccc;
+	background: var(--paper-background);
+	box-shadow: 0 0 15px 0px var(--paper-shadow);
+	color: var(--paper-font-color);
 }
 .main {
 	flex: 0 1 960px;
+}
+.snip + .snip {
+	margin-top: 15px;
+}
+.snip-inactive {
+	background: var(--paper-inactive-background);
+}
+.navigation {
+	flex: 0 0.5 200px;
+}
+.snips {
+	flex: 0 0.666666 640px;
+	margin: 0;
+	padding: 0;
 }
 
 .main h1 {
@@ -58,6 +109,9 @@ body {
 	display: inline-block;
 	width: 100%;
 	max-width: 200px;
+	padding-left: 15px;
+}
+.navigation > .children {
 	padding-left: 0;
 }
 .child-button,
@@ -67,55 +121,81 @@ body {
 }
 .child-button {
 	padding: 5px 5px 5px 0;
+	color: var(--navigation-font-color);
 }
 .citation-button {
 	padding: 10px 5px 10px 0;
-	color: #777;
+	color: var(--reference-font-color);
 }
 
-.left-side .citations {
+.navigation .citations {
 	margin-top: 4px;
-	border-top: 1px solid gray;
+	border-top: 1px solid var(--divider-color);
 }
-.left-side button {
+.navigation button {
 	border: none;
 	background: none;
 	font-size: inherit;
 }
+.navigation .citation-button-active {
+	padding-left: 12px;
+	background: var(--reference-active-background);
+}
 
+.main .save,
 .main .expand-left,
 .main .expand-right,
-.citations .close {
+.snips .close {
     position: absolute;
     top: 10px;
     width: 30px;
     height: 30px;
     margin: 0;
-	border: 1px solid #ddd;
+	border: 1px solid var(--button-border-color);
     border-radius: 50%;
     line-height: 30px;
-    background: #eee;
+	color: var(--button-font-color);
+    background: var(--button-background);
 }
 .main .expand-left:hover,
 .main .expand-right:hover,
-.citations .close:hover {
-	border-color: #ccc;
-	background: #ddd;
+.snips .close:hover {
+	border-color: var(--button-hover-border-color);
+	color: var(--button-hover-font-color);
+	background: var(--button-hover-background);
+}
+.main .save {
+    right: 10px;
+    font-size: 24px;
+    line-height: 27px;
+    font-weight: bold;
 }
 .main .expand-left {
     left: 10px;
 	font-size: 26px;
+	line-height: 26px;
 }
 .main .expand-right {
     right: 10px;
-	font-size: 23px;
-	line-height: 28px
+	font-size: 25px;
+	line-height: 27px;
 }
-.citations .close {
+.snips .close {
     right: 10px;
     font-size: 17px;
 }
 
+.editor {
+	width: 100%;
+	border: none;
+	background: none;
+	resize: none;
+	color: var(--paper-font-color);
+	overflow: hidden;
+}
+.editor:focus {
+	outline: none;
+}
 
 
 

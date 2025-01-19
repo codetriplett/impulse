@@ -116,7 +116,7 @@ function getText (node) {
 	return text;
 }
 
-function findByType (candidateNodes, expectedType) {
+export function findByType (candidateNodes, expectedType) {
 	const foundNodes = [];
 
 	for (const candidateNode of candidateNodes) {
