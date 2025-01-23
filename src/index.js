@@ -21,6 +21,9 @@ export const state = createState({
 	snips: [],
 	isLeftNavExpanded: true,
 	isRightNavExpanded: true,
+	isEditing: false,
+	isChanged: false,
+	draft: null,
 });
 
 function updateFile (path, text, type) {
@@ -293,13 +296,8 @@ function scopeTree (allNodes, ...ranges) {
 }
 
 function renderCitation (hashPath, manifest) {
-	const { path, snips } = state;
-
-	if (hashPath === path) {
-		return;
-	}
-
-	const isActive = allCitations.values().some(citation => hashPath === citation.path);
+	const { snips } = state;
+	const isActive = allCitations.some(citation => hashPath === citation.path);
 
 	return memo => {
 		const [path] = hashPath.split('#');
@@ -335,63 +333,70 @@ function renderCitation (hashPath, manifest) {
 
 let allCitations;
 
-function renderLeftMenu (manifest, pathname, ...hashes) {
-	const { snips } = state;
-	let { children = [] } = manifest[`${pathname}#`] || {};
+function renderLeftMenu (manifest, ...hashPaths) {
+	const [pathname, hash = ''] = hashPaths[0].split('#');
+	const rootPath = `${pathname}#`;
+	let { children = [] } = manifest[rootPath] || {};
 
 	if (children.length === 1) {
 		const { children: nestedChildren = [], name } = children[0];
 		children = nestedChildren;
 
-		if (hashes.indexOf('') !== -1) {
-			hashes.push(`#${name}`);
+		if (hash === '') {
+			hashPaths.splice(1, 0, `${pathname}#${name}`);
 		}
 	}
 
-	allCitations = new Set(hashes.map(hash => {
-		const { citations = [] } = hash && manifest[`${pathname}${hash}`] || {};
+	allCitations = new Set(hashPaths.map(hashPath => {
+		const { citations = [] } = manifest[hashPath] || {};
 		return citations;
-	}).flat());
+	}).flat()).values().filter(node => {
+		return !node.path.startsWith(rootPath);
+	});
 
-	return ['div', {
-		className: 'navigation',
-	},
-		renderChildren(children),
-		['ul', { className: 'citations' },
-			...allCitations.values().map(citation => {
-				const { path, heading } = citation;
-				const pathIndex = snips.indexOf(path);
+	return memo => {
+		const { snips } = state;
 
-				return ['li', null,
-					['button', {
-						className: `citation-button ${pathIndex !== -1 ? 'citation-button-active' : ''}`,
-						onclick: () => {
-							const newSnips = [...snips];
+		return ['div', {
+			key: 'navigation',
+			className: 'navigation',
+		},
+			renderChildren(children),
+			['ul', { className: 'citations' },
+				...allCitations.map(citation => {
+					const { path, heading } = citation;
+					const pathIndex = snips.indexOf(path);
 
-							if (pathIndex === -1) {
-								newSnips.push(path);
-							} else {
-								newSnips.splice(pathIndex, 1);
-							}
+					return ['li', null,
+						['button', {
+							className: `citation-button ${pathIndex !== -1 ? 'citation-button-active' : ''}`,
+							onclick: () => {
+								const newSnips = [...snips];
 
-							Object.assign(state, {
-								snips: newSnips,
-								isRightNavExpanded: true,
-							});
+								if (pathIndex === -1) {
+									newSnips.push(path);
+								} else {
+									newSnips.splice(pathIndex, 1);
+								}
 
-							storeSession();
-						},
-					}, heading],
-				];
-			}),
-		],
-	];
+								Object.assign(state, {
+									snips: newSnips,
+								});
+
+								storeSession();
+							},
+						}, heading],
+					];
+				}),
+			],
+		];
+	};
 }
 
 function renderRightMenu (manifest) {
-	const { path, snips } = state;
+	const { snips } = state;
 
-	if (snips.length === 0 || snips.length === 1 && snips[0] === path) {
+	if (!snips.length) {
 		return;
 	}
 
@@ -443,13 +448,55 @@ function renderAstNode (node, definitions, remotePath = '') {
 	}
 }
 
-// TODO: render immediate mentions, but include mentions of mentions when expanded
+// WEDNESDAY: edit mode (when left button is clicked)
+// - snips panel will close, and navigation panel will change to edit
+// - that button will change to close button (or save if there are changes)
+// - right pane will change to a preview
 
-// TODO: finish right nav, with similar behavior as left nav (tag hierarchy on right, mentions below)
+
+
+// TUESDAY: edit mode
+// - have hiding nav also toggle edit mode
+// - change buttons to close, save buttons, as well as toggles for props/content, and styles/schema/renderer
+// - allow paths to use styles/schema/renderer from a different path (with / reverting to impulse renderer)
+
+/*
+
+...resources // paths of JS and CSS files necessary for code
+{ ...schema } // automatically creates variables for each top level property
+...code
+
+*/
+
+
+
+
+// TODO: interweave notes (MD), schema (JSON), and code (JS) with same path (view and edit modes)
+// - tie snips to the js variables and functions of the same name, and display any unused ones at the bottom
+// - put schema at the very top, after the default snip (before first headline)
+// - in edit mode, use a textarea for each section of the same type (e.g. MD, then JS for that MD, but multiple MD or JS can be included in one if not split up)
+// - keep the navigation and reference panels in edit mode, and update them when saving changes
+
+
+
+// TODO: finish left nav, with nested mentions
+// - only show direction mentions, but allow them to expand to show the mentions scoped to each one
+// - design should look similar to the local hierarchy nav, but for imports and exports
+// - use tags instead of headlines for mentions. It is the replacement for the visual tag map in other programs (and sets it apart from main nav)
+// - show file explorer on home page in place of navigation, and mention for tags from root url /
+
+// TODO: finish right panel
+// - this is a workspace for showing snips from other files without having to juggle tabs
+// - snips aren't tied to which one is focused on main page, and they carry over as you browse
+// - store session when opening closing snips, and show previous sessions on home page
+// - new sessions are created when a snip is opened while navigating when a previous session was not continued
+// - sessions are closed when their last snip is closed
+// - keep the highlighting for items in left nav that are active in right nav
 
 // TODO: try parallel mode which displays two docs side by side, and  lines up snips with identical ids
 // - useful for studying parallel histories, e.g. events by year
 // - use hash as path
+// - render snips in table so they will add white space when other file has intermediate snips
 
 // TODO: tag overview, #tag
 // - from home page path
@@ -462,57 +509,32 @@ function renderAstNode (node, definitions, remotePath = '') {
 // - will render form and preview of page (if there is a js file at path to page)
 // - js file will accept json as props and returns either string or object (to use directly in DOM), or Array or function (to render with stew)
 
+/*
+	!!! # as hash is treated the same as no hash
+	!!! paths that end in / are treated the same as ones without
+	!!! ids are technically allowed to have slashes, just not at the beginning
+
+	/: show personal home page, and root tags, broken up into sets of 100 (alphabetically)
+	/#tag: show hierarchy for tag
+	/#/path/to/file: edit note
+
+	/path/to/note: render markdown
+	/path/to/page#name: focus snip
+	/path/to/page#/path/to/other/page: compare pages
+
+	HTML FEATURES
+
+	/path/to/page/[#]: render HTML
+	/#/path/to/page/: edit data
+
+	!!! template and renderer are modified outside of tool?
+*/
+
 function resizeTextarea (ref) {
 	const [textarea] = ref;
 	textarea.style.height = '0px';
 	const { scrollHeight } = textarea;
 	textarea.style.height = `${scrollHeight}px`;
-}
-
-function renderEditor (memo) {
-	const { files, hash } = state;
-	const [prevHash] = memo;
-	const path = hash.slice(1);
-	const ref = [];
-
-	if (hash !== prevHash) {
-		memo[0] = hash;
-		memo[1] = files[path];
-	}
-
-	const file = memo[1];
-
-	onRender(() => {
-		resizeTextarea(ref);
-	});
-
-	return ['div', {
-		className: 'app',
-	},
-		['div', {
-			className: 'main',
-		},
-			['textarea', {
-				className: 'editor',
-				ref,
-				onkeydown: () => {
-					resizeTextarea(ref);
-				},
-				onkeyup: () => {
-					resizeTextarea(ref);
-				},
-			}, file],
-			['button', {
-				className: 'save',
-				onclick: () => {
-					const [textarea] = ref;
-					updateFile(path, textarea.value, 'md');
-					storeSession();
-					window.location.reload();
-				},
-			}, '🖫'],
-		],
-	];
 }
 
 function prepareDefinitions (astNodes) {
@@ -527,19 +549,59 @@ function prepareDefinitions (astNodes) {
 	return definitions;
 }
 
-// TODO: render markdown if exists in file, otherwise use path to fetch js file to render HTML
-function renderPage (memo) {
-	const { files, hash, path, isLeftNavExpanded, isRightNavExpanded, snips } = state;
-	const { pathname } = window.location;
-	const [prevPath, prevHash] = memo;
+const templateRef = [];
+const editRef = [];
 
-	if (pathname !== prevPath || hash !== prevHash) {
-		memo[0] = pathname;
+function EditingPanel (memo) {
+	const { files } = state;
+	const { pathname } = window.location;
+	const file = files[pathname];
+	
+	onRender(() => {
+		resizeTextarea(editRef);
+	});
+
+	return ['div', {
+		key: 'edit',
+		className: 'edit',
+	},
+		['input', {
+			className: 'template-path',
+			type: 'text',
+			placeholder: 'template path (optional)',
+			ref: templateRef,
+		}],
+		['textarea', {
+			className: 'editor',
+			ref: editRef,
+			onkeydown: () => {
+				resizeTextarea(editRef);
+				state.isChanged = true;
+			},
+			onkeyup: () => {
+				resizeTextarea(editRef);
+				state.isChanged = true;
+			},
+		}, file],
+	];
+}
+
+function HomePage (memo) {
+	return ['p', null, 'Home Page'];
+}
+
+function Page (memo) {
+	const { files, hash, draft, isLeftNavExpanded, isChanged, isEditing, snips } = state;
+	const [prevContent, prevHash] = memo;
+	const hashPath = `${pathname}${hash}`;
+	const content = draft || files[pathname];
+
+	if (content !== prevContent || hash !== prevHash) {
+		memo[0] = content;
 		memo[1] = hash;
 
-		if (pathname !== prevPath) {
-			const file = files[pathname];
-			const astNodes = parseMDtoAST(file).children;
+		if (content !== prevContent) {
+			const astNodes = parseMDtoAST(content).children;
 			memo[2] = astNodes; // TODO: process id on headers (remove from string and add id prop)
 			memo[3] = prepareDefinitions(astNodes);
 		}
@@ -556,59 +618,68 @@ function renderPage (memo) {
 	return ['div', {
 		className: 'app',
 	},
-		isLeftNavExpanded && renderLeftMenu(manifest, pathname, hash),
+		// TODO: check if stew needs fixing
+		// - it is sharing children between two different functions if they have the same spot in the layout
+		// - should it check if the functions are a match before keeping them?
+		// - should nameless (anonymous) functions share children? They would always be different between renders (no name means it was never stored to variable)
+		// - if a function needs to be treated as a separate entity, either use a ref in its output or separate it out as its own component
+		isEditing
+			? EditingPanel
+			: isLeftNavExpanded && renderLeftMenu(manifest, hashPath, ...snips),
 		['div', {
 			className: 'main',
 		},
+			// while in editing mode, have this change between...
+			// - clear: if template path is filled and not being edited
+			// - create: if template path is populated and being edited
+			// - customize: if template path is empty
 			['button', {
 				className: 'expand-left',
 				onclick: () => {
 					state.isLeftNavExpanded = !isLeftNavExpanded;
 				},
 			}, '≡'],
-			snips.length > 0 && (snips.length > 1 || snips[0] !== path) && ['button', {
-				className: 'expand-right',
-				onclick: () => {
-					state.isRightNavExpanded = !isRightNavExpanded;
-				},
-			}, '#'],
+			!isEditing
+				? ['button', {
+					className: 'expand-right',
+					onclick: () => {
+						state.isEditing = true;
+					},
+				}, '✎']
+				: draft === null && !isChanged
+					? ['button', {
+						className: 'expand-right',
+						onclick: () => {
+							state.isEditing = false;
+						},
+					}, '✕']
+					: isChanged
+						? ['button', {
+							className: 'expand-right',
+							onclick: () => {
+								const [editInput] = editRef;
+								const { value } = editInput;
+								
+								Object.assign(state, {
+									draft: value === files[pathname] ? null : value,
+									isChanged: false,
+								});
+							},
+						}, '👁']
+						: ['button', {
+							className: 'expand-right',
+							onclick: () => {
+								const { files } = state;
+								const [editInput] = editRef;
+								files[pathname] = editInput.value;
+								storeSession();
+								state.draft = null;
+							},
+						}, '🖫'],
 			...astNodes.map(node => renderAstNode(node, definitions)),
 		],
-		isRightNavExpanded && renderRightMenu(manifest),
+		!isEditing && renderRightMenu(manifest),
 	];
-}
-
-function renderHomePage (memo) {
-	return ['p', null, 'Home Page'];
-}
-
-function renderMap (memo) {
-	return ['p', null, 'map'];
-}
-
-function renderForm (memo) {
-	return ['p', null, 'form'];
-}
-
-function renderApp (memo) {
-	const { hash} = state;
-	const { pathname } = window.location;
-
-	if (pathname !== '/') {
-		if (!hash || !hash.startsWith('#/')) {
-			return renderPage;
-		} else {
-			return renderForm;
-		}
-	} else {
-		if (!hash || hash === '#') {
-			return renderHomePage;
-		} else if (hash.startsWith('#/')) {
-			return renderEditor;
-		}
-	}
-
-	return renderMap;
 }
 
 if (typeof window !== 'undefined') {
@@ -637,5 +708,5 @@ if (typeof window !== 'undefined') {
 		root.style.setProperty('--link-visited-font-color', '#8d54c1');
 	}
 
-	stew('#app', renderApp);
+	stew('#app', pathname === '/' ? HomePage : Page);
 }
