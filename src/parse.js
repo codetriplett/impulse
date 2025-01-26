@@ -1,4 +1,4 @@
-import { parse as parseMDtoAST } from '@textlint/markdown-to-ast';
+import { parse as mapNodetoAST } from '@textlint/markdown-to-ast';
 import { parse as parseJStoAST } from 'acorn';
 import { getObject } from './common';
 
@@ -65,7 +65,7 @@ export function parseJS (text) {
 	return imports;
 }
 
-export function processId (node) {
+export function processIdOld (node) {
 	if ('id' in node) {
 		return;
 	}
@@ -133,8 +133,219 @@ export function findByType (candidateNodes, expectedType) {
 	return foundNodes;
 }
 
-export function parseMD (text) {
-	const tree = parseMDtoAST(text);
+/*
+Document = "Document",
+Paragraph = "Paragraph",
+BlockQuote = "BlockQuote",
+ListItem = "ListItem",
+List = "List",
+Header = "Header",
+CodeBlock = "CodeBlock",
+HorizontalRule = "HorizontalRule",
+Comment = "Comment",
+Str = "Str",
+Break = "Break", // well-known Hard Break
+Emphasis = "Emphasis",
+Strong = "Strong",
+Html = "Html",
+Link = "Link",
+Image = "Image",
+Code = "Code",
+Delete = "Delete",
+Table = "Table",
+TableRow = "TableRow",
+TableCell = "TableCell",
+*/
+
+function processId (props, elements) {
+	const suffix = elements[elements.length - 1];
+
+	if (typeof suffix !== 'string') {
+		return;
+	}
+
+	const [hash, id] = suffix.match(/\s*\{#(.*?)\}\s*$/) || [];
+
+	if (!hash) {
+		return;
+	}
+
+	props.id = id;
+	elements[elements.length - 1] = suffix.slice(0, -hash.length);
+}
+
+function parseNode (node, definitions, references, path, tableAlign = [], i) {
+	const { type, range, value, align = tableAlign, children } = node;
+
+	if (type === 'Str') {
+		return value;
+	}
+
+	const [start, finish] = range;
+	const props = { key: `${start}-${finish}` };
+
+	switch (type) {
+		case 'Definition': {
+			const { label, url } = node;
+	
+			if (!Object.prototype.hasOwnProperty.call(definitions, label)) {
+				definitions[label] = url;
+			}
+	
+			return;
+		}
+		case 'Code': {
+			return ['code', props, value];
+		}
+		case 'CodeBlock': {
+			return ['pre', props,
+				['code', {}, value],
+			];
+		}
+		case 'HorizontalRule': {
+			return ['hr', props];
+		}
+		case 'Break': {
+			return ['br', props];
+		}
+		case 'Image': {
+			const { url, title, alt } = node;
+			props.src = url;
+			props.alt = alt;
+
+			if (title !== null) {
+				props.title = title;
+			}
+
+			return ['img', props];
+		}
+	}
+
+	// TODO: put switch statement above this for ones that don't use children
+	const childElements = !children ? [] : children.map((node, i) => {
+		return parseNode(node, definitions, references, path, align, i);
+	}).filter(element => element);
+
+	switch (type) {
+		case 'Document': {
+			return ['', props, ...childElements];
+		}
+		case 'Header': {
+			processId(props, childElements);
+			const { depth } = node;
+			const { id } = props;
+
+			if (!id) {
+				return [depth, props, ...childElements];
+			}
+
+			return [depth, props,
+				['a', { href: `${path}#${id}` }, ...childElements],
+			];
+		}
+		case 'Paragraph': {
+			return ['p', props, ...childElements];
+		}
+		case 'List': {
+			const { ordered, spread } = node;
+
+			if (!spread) {
+				for (const element of childElements) {
+					const paragraph = element[2];
+
+					if (element.length > 3 || paragraph?.[0] !== 'p') {
+						continue;
+					}
+
+					element.splice(2, 1, ...paragraph.slice(2));
+				}
+			}
+
+			const tag = ordered ? 'ol' : 'ul';
+			return [tag, props, ...childElements];
+		}
+		case 'ListItem': {
+			return ['li', props, ...childElements];
+		}
+		case 'BlockQuote': {
+			return ['blockquote', props, ...childElements];
+		}
+		case 'Emphasis': {
+			return ['em', props, ...childElements];
+		}
+		case 'Strong': {
+			return ['strong', props, ...childElements];
+		}
+		case 'Link': {
+			const { url, title } = node;
+			props.href = url;
+
+			if (title !== null) {
+				props.title = title;
+			}
+
+			return ['a', props, ...childElements];
+		}
+		case 'LinkReference': {
+			const { label } = node;
+			props.href = `#${label}`;
+			const element = ['a', props, ...childElements];
+			references.push(element);
+			return element;
+		}
+		case 'Table': {
+			const [head, ...body] = childElements;
+
+			for (const cell of head.slice(2)) {
+				cell[0] = 'th';
+			}
+
+			return ['table', props,
+				['thead', {}, head],
+				['tbody', {}, ...body],
+			];
+		}
+		case 'TableRow': {
+			return ['tr', props, ...childElements];
+		}
+		case 'TableCell': {
+			const textAlign = tableAlign[i];
+
+			if (textAlign) {
+				props.style = `text-align:${textAlign};`;
+			}
+
+			return ['td', props, ...childElements];
+		}
+	}
+}
+
+export function parseMD (text, path = '') {
+	const root = mapNodetoAST(text);
+	const definitions = {};
+	const references = [];
+	const fragment = parseNode(root, definitions, references, path);
+
+	for (const reference of references) {
+		const props = reference[1];
+		const label = props.href.slice(1);
+		
+		if (!Object.prototype.hasOwnProperty.call(definitions, label)) {
+			continue;
+		}
+
+		props.href = definitions[label];
+	}
+
+	return fragment;
+}
+
+// TODO: change this to accpt result of parseMD
+// - have key prop store range string 'start-finish'
+// - have id prop store id for headings
+// - have definitions prop of root fragment store definition data (label: url)
+export function mapNode (text) {
+	const tree = mapNodetoAST(text);
 	const { children } = tree;
 	const urls = {};
 	let prevStart = text.length;
@@ -160,7 +371,7 @@ export function parseMD (text) {
 		const { range } = snip;
 		const [rangeStart] = range;
 
-		processId(snip);
+		processIdOld(snip);
 		range[1] = prevStart;
 		prevStart = rangeStart;
 
@@ -238,7 +449,7 @@ export function parse (text, type) {
 			return parseJS(text);
 		}
 		case 'md': {
-			return parseMD(text);
+			return mapNode(text);
 		}
 	}
 }
@@ -298,7 +509,7 @@ export function parse (text, type) {
 // // - will be used to render to html, and track imports/exports and tags
 // // - just parse headers and links for now
 // // - expand to full markdown support in the future
-// export function parseMD (content, map, rootFolders) {
+// export function mapNode (content, map, rootFolders) {
 // 	const references = content.match(/\[.*?\]: +.*/g) || [];
 // 	const tags = `\n${content.trim()}\n`.match(/\s#\S+(?!\})/g) || [];
 // 	const sections = `\n${content.trim()}\n`.split(/(?=\n#+ )/) || [];

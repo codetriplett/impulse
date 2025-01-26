@@ -1,4 +1,4 @@
-const { parseJS, parseMD, parse } = require('./parse');
+const { parseJS, parseMD, mapNode, parse } = require('./parse');
 
 describe('parseJS', () => {
 	it('parses default import', () => {
@@ -263,6 +263,238 @@ export const local = main;`);
 });
 
 describe.only('parseMD', () => {
+	it('parses header', () => {
+		const actual = parseMD(`
+# abc
+		`);
+
+		expect(actual).toEqual(['', { key: '0-9' },
+			[1, { key: '1-6' }, 'abc'],
+		]);
+	});
+
+	it('parses header with id', () => {
+		const actual = parseMD(`
+# abc {#xyz}
+		`);
+
+		expect(actual).toEqual(['', { key: '0-16' },
+			[1, { key: '1-13', id: 'xyz' },
+				['a', { href: '#xyz' }, 'abc'],
+			],
+		]);
+	});
+
+	it('parses paragraph', () => {
+		const actual = parseMD(`
+abc
+		`);
+
+		expect(actual).toEqual(['', { key: '0-7' },
+			['p', { key: '1-4' }, 'abc'],
+		]);
+	});
+
+	it('parses unordered list', () => {
+		const actual = parseMD(`
+- abc
+- xyz
+		`);
+
+		expect(actual).toEqual(['', { key: '0-15' },
+			['ul', { key: '1-15' },
+				['li', { key: '1-6' }, 'abc'],
+				['li', { key: '7-12' }, 'xyz'],
+			],
+		]);
+	});
+
+	it('parses ordered list', () => {
+		const actual = parseMD(`
+1. abc
+2. xyz
+		`);
+
+		expect(actual).toEqual(['', { key: '0-17' },
+			['ol', { key: '1-17' },
+				['li', { key: '1-7' }, 'abc'],
+				['li', { key: '8-14' }, 'xyz'],
+			],
+		]);
+	});
+
+	it('parses spaced list', () => {
+		const actual = parseMD(`
+- abc
+
+- xyz
+		`);
+
+		expect(actual).toEqual(['', { key: '0-16' },
+			['ul', { key: '1-16' },
+				['li', { key: '1-6' },
+					['p', { key: '3-6' }, 'abc'],
+				],
+				['li', { key: '8-13' },
+					['p', { key: '10-13' }, 'xyz'],
+				],
+			],
+		]);
+	});
+	
+	it('parses blockquote', () => {
+		const actual = parseMD(`
+> abc
+		`);
+
+		expect(actual).toEqual(['', { key: '0-9' },
+			['blockquote', { key: '1-6' },
+				['p', { key: '3-6' }, 'abc'],
+			],
+		]);
+	});
+
+	it('parses code', () => {
+		const actual = parseMD(`
+\`abc\`
+		`);
+
+		expect(actual).toEqual(['', { key: '0-9' },
+			['p', { key: '1-6' },
+				['code', { key: '1-6' }, 'abc'],
+			],
+		]);
+	});
+
+	it('parses code block', () => {
+		const actual = parseMD(`
+\`\`\`
+abc
+\`\`\`
+		`);
+
+		expect(actual).toEqual(['', { key: '0-15' },
+			['pre', { key: '1-12' },
+				['code', {}, 'abc'],
+			],
+		]);
+	});
+
+	it('parses horizontal rule', () => {
+		const actual = parseMD(`
+---
+		`);
+
+		expect(actual).toEqual(['', { key: '0-7' },
+			['hr', { key: '1-4' }],
+		]);
+	});
+
+	it('parses line break', () => {
+		const actual = parseMD(`
+abc  
+xyz
+		`);
+
+		expect(actual).toEqual(['', { key: '0-13' },
+			['p', { key: '1-10' },
+				'abc',
+				['br', { key: '4-7' }],
+				'xyz',
+			],
+		]);
+	});
+
+	it('parses emphasis', () => {
+		const actual = parseMD(`
+*abc*
+		`);
+
+		expect(actual).toEqual(['', { key: '0-9' },
+			['p', { key: '1-6' },
+				['em', { key: '1-6' }, 'abc'],
+			],
+		]);
+	});
+
+	it('parses strong', () => {
+		const actual = parseMD(`
+**abc**
+		`);
+
+		expect(actual).toEqual(['', { key: '0-11' },
+			['p', { key: '1-8' },
+				['strong', { key: '1-8' }, 'abc'],
+			],
+		]);
+	});
+
+	it('parses link', () => {
+		const actual = parseMD(`
+[abc](/xyz "lmno")
+		`);
+
+		expect(actual).toEqual(['', { key: '0-22' },
+			['p', { key: '1-19' },
+				['a', { key: '1-19', href: '/xyz', title: 'lmno' }, 'abc'],
+			],
+		]);
+	});
+
+	it('parses link reference', () => {
+		const actual = parseMD(`
+[lmno]: /xyz
+[abc][lmno]
+		`);
+
+		expect(actual).toEqual(['', { key: '0-28' },
+			['p', { key: '14-25' },
+				['a', { key: '14-25', href: '/xyz' }, 'abc'],
+			],
+		]);
+	});
+
+	it('parses image', () => {
+		const actual = parseMD(`
+![abc](/xyz.jpg)
+		`);
+
+		expect(actual).toEqual(['', { key: '0-20' },
+			['p', { key: '1-17' },
+				['img', { key: '1-17', src: '/xyz.jpg', alt: 'abc' }],
+			],
+		]);
+	});
+
+	it('parses table', () => {
+		const actual = parseMD(`
+|abc|lmno|xyz|
+|---|:--:|--:|
+|123|456 |789|
+		`);
+
+		expect(actual).toEqual(['', { key: '0-48' },
+			['table', { key: '1-45' },
+				['thead', {},
+					['tr', { key: '1-15' },
+						['th', { key: '1-6' }, 'abc'],
+						['th', { key: '6-11', style: 'text-align:center;' }, 'lmno'],
+						['th', { key: '11-15', style: 'text-align:right;' }, 'xyz'],
+					],
+				],
+				['tbody', {},
+					['tr', { key: '31-45' },
+						['td', { key: '31-36' }, '123'],
+						['td', { key: '36-41', style: 'text-align:center;' }, '456'],
+						['td', { key: '41-45', style: 'text-align:right;' }, '789'],
+					],
+				],
+			],
+		]);
+	});
+});
+
+describe('mapNode', () => {
 	// refernce links are a part of the markdown syntax
 	// - these should be stored in the area before the first heading, similar to JS files
 	//   - cuts down on processing of entire file
@@ -375,7 +607,7 @@ describe.only('parseMD', () => {
 	// - updateNode will append these internal refs has hashes on info string, and will use the rest of the array for external refs
 	//   - in this case, imports probably can either remain as internal refs (less processing), or just as a string
 	it('file reference', () => {
-		const actual = parseMD(
+		const actual = mapNode(
 `[file]: ./file
 # Header {#local}
 [File][file]`);
@@ -392,7 +624,7 @@ describe.only('parseMD', () => {
 	});
 
 	it('name reference', () => {
-		const actual = parseMD(
+		const actual = mapNode(
 `[main]: ./file#remote
 # Header {#local}
 [File][main]`);
@@ -416,7 +648,7 @@ describe.only('parseMD', () => {
 	// GOAL: writing notes should be as simple as possible, just stick to links to directly reference snips under headlines
 
 	it('inline file reference', () => {
-		const actual = parseMD(
+		const actual = mapNode(
 `# Header {#local}
 [File](./file)`);
 
@@ -432,7 +664,7 @@ describe.only('parseMD', () => {
 	});
 
 	it('inline snip reference', () => {
-		const actual = parseMD(
+		const actual = mapNode(
 `# Header {#local}
 [File](./file#remote)`);
 
@@ -448,7 +680,7 @@ describe.only('parseMD', () => {
 	});
 
 	it('multiple references', () => {
-		const actual = parseMD(
+		const actual = mapNode(
 `[main]: ./file#remote
 # First Header {#first}
 [File][main]
@@ -468,7 +700,7 @@ describe.only('parseMD', () => {
 	});
 
 	it('nameless header', () => {
-		const actual = parseMD(
+		const actual = mapNode(
 `[file]: ./file
 # Header
 [File][file]`);
@@ -485,7 +717,7 @@ describe.only('parseMD', () => {
 	});
 
 	it('skips duplicate name', () => {
-		const actual = parseMD(
+		const actual = mapNode(
 `[file]: ./file
 # First Header {#local}
 [File][file]
@@ -505,7 +737,7 @@ describe.only('parseMD', () => {
 	});
 
 	it('anchors to parent', () => {
-		const actual = parseMD(
+		const actual = mapNode(
 `[file]: ./file
 # Parent Header {#parent}
 [File][file]
@@ -530,7 +762,7 @@ describe.only('parseMD', () => {
 
 
 // 	it('parses main reference', () => {
-// 		const actual = parseMD(
+// 		const actual = mapNode(
 // `[main]: ./file#main
 // # Header {#local}
 // [File Main #123][main]`);
@@ -548,7 +780,7 @@ describe.only('parseMD', () => {
 
 // 	// TODO: have this and the others above first check if main123 exists explicitely in file, otherwise use main
 // 	it('parses variation reference', () => {
-// 		const actual = parseMD(
+// 		const actual = mapNode(
 // `[main123]: ./file#main123
 // # Header {#local}
 // [File Main 123 #main123][main123]`);
@@ -572,7 +804,7 @@ describe.only('parseMD', () => {
 
 	
 // 	it('parses named reference', () => {
-// 		const actual = parseMD(
+// 		const actual = mapNode(
 // `[other]: ./file#other
 // # Header {#local}
 // [Other Label][other]`);
@@ -589,7 +821,7 @@ describe.only('parseMD', () => {
 // 	});
 
 // 	it('parses aliased reference', () => {
-// 		const actual = parseMD(
+// 		const actual = mapNode(
 // `[alias]: ./file#another
 // # Header {#local}
 // [Alias Label][alias]`);
@@ -606,7 +838,7 @@ describe.only('parseMD', () => {
 // 	});
 
 // 	it('parses local reference', () => {
-// 		const actual = parseMD(
+// 		const actual = mapNode(
 // `[local]: #local
 // # Header {#local}
 // [Local Label][local]`);
@@ -623,7 +855,7 @@ describe.only('parseMD', () => {
 // 	});
 
 // 	it('parses reference in top section', () => {
-// 		const actual = parseMD(
+// 		const actual = mapNode(
 // `[main]: ./file#
 // [Meta Label][main]
 // # Header {#local}`);
@@ -640,7 +872,7 @@ describe.only('parseMD', () => {
 // 	});
 
 // 	it('parses multiple headers', () => {
-// 		const actual = parseMD(
+// 		const actual = mapNode(
 // `[main]: ./file#
 // # Header {#first}
 // [Main Label][main]

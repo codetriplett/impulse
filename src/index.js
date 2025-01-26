@@ -5,9 +5,9 @@
 import { parse } from './parse';
 import { updateNode } from './map';
 import { getObject } from './common';
-import { processId, findByType } from './parse';
+import { processIdOld, findByType } from './parse';
 import { createState, onRender } from '@triplett/stew';
-import { parse as parseMDtoAST } from '@textlint/markdown-to-ast';
+import { parse as mapNodetoAST } from '@textlint/markdown-to-ast';
 
 const { pathname, hash } = window.location;
 
@@ -20,8 +20,8 @@ export const state = createState({
 	path: `${pathname}${hash || '#'}`,
 	snips: [],
 	isLeftNavExpanded: true,
-	isRightNavExpanded: true,
 	isEditing: false,
+	isTemplateFocused: false,
 	isChanged: false,
 	draft: null,
 });
@@ -306,7 +306,7 @@ function renderCitation (hashPath, manifest) {
 			const { files } = state;
 			const { start, finish } = manifest[hashPath];
 			const file = files[path];
-			const astNodes = parseMDtoAST(file).children;
+			const astNodes = mapNodetoAST(file).children;
 			const scopedNodes = scopeTree(astNodes, [start, finish]);
 			memo[0] = hashPath;
 			memo[1] = scopedNodes;
@@ -413,7 +413,7 @@ function renderAstNode (node, definitions, remotePath = '') {
 	const { type, children } = node;
 
 	if (type === 'Header') {
-		processId(node);
+		processIdOld(node);
 	}
 
 	const childElements = children ? children.map(node => renderAstNode(node, definitions, remotePath)) : [];
@@ -553,11 +553,15 @@ const templateRef = [];
 const editRef = [];
 
 function EditingPanel (memo) {
-	const { files } = state;
+	const { files, isTemplateFocused } = state;
 	const { pathname } = window.location;
 	const file = files[pathname];
 	
 	onRender(() => {
+		if (isTemplateFocused) {
+			resizeTextarea(templateRef);
+		}
+
 		resizeTextarea(editRef);
 	});
 
@@ -565,14 +569,34 @@ function EditingPanel (memo) {
 		key: 'edit',
 		className: 'edit',
 	},
-		['input', {
-			className: 'template-path',
-			type: 'text',
-			placeholder: 'template path (optional)',
+		['textarea', {
+			className: `template ${isTemplateFocused ? 'template-focused' : ''}`,
+			placeholder: '(default)', // TODO: put path of parent here
 			ref: templateRef,
+			onfocus: () => {
+				resizeTextarea(templateRef);
+				state.isTemplateFocused = true;
+			},
+			onblur: () => {
+				const [textarea] = templateRef;
+				textarea.style.height = null;
+				state.isTemplateFocused = false;
+			},
+			onkeydown: () => {
+				resizeTextarea(templateRef);
+				state.isChanged = true;
+			},
+			onkeyup: () => {
+				resizeTextarea(templateRef);
+				state.isChanged = true;
+			},
 		}],
+		!isTemplateFocused && ['div', {
+			className: 'form',
+		}, 'PUT FORM HERE'],
 		['textarea', {
 			className: 'editor',
+			placeholder: '(empty)',
 			ref: editRef,
 			onkeydown: () => {
 				resizeTextarea(editRef);
@@ -601,7 +625,7 @@ function Page (memo) {
 		memo[1] = hash;
 
 		if (content !== prevContent) {
-			const astNodes = parseMDtoAST(content).children;
+			const astNodes = mapNodetoAST(content).children;
 			memo[2] = astNodes; // TODO: process id on headers (remove from string and add id prop)
 			memo[3] = prepareDefinitions(astNodes);
 		}
@@ -633,12 +657,36 @@ function Page (memo) {
 			// - clear: if template path is filled and not being edited
 			// - create: if template path is populated and being edited
 			// - customize: if template path is empty
-			['button', {
-				className: 'expand-left',
-				onclick: () => {
-					state.isLeftNavExpanded = !isLeftNavExpanded;
-				},
-			}, '≡'],
+			!isEditing
+				? ['button', {
+					className: 'expand-left',
+					onclick: () => {
+						state.isLeftNavExpanded = !isLeftNavExpanded;
+					},
+				}, '≡']
+				: isChanged
+					? ['button', {
+						className: 'expand-left',
+						onclick: () => {
+							const [editInput] = editRef;
+							const { value } = editInput;
+							
+							Object.assign(state, {
+								draft: value === files[pathname] ? null : value,
+								isChanged: false,
+							});
+						},
+					}, '👁']
+					: ['button', {
+						className: 'expand-left',
+						onclick: () => {
+							const { files } = state;
+							const [editInput] = editRef;
+							files[pathname] = editInput.value;
+							storeSession();
+							state.draft = null;
+						},
+					}, '🖫'],
 			!isEditing
 				? ['button', {
 					className: 'expand-right',
@@ -646,36 +694,22 @@ function Page (memo) {
 						state.isEditing = true;
 					},
 				}, '✎']
-				: draft === null && !isChanged
+				: draft !== null || isChanged
 					? ['button', {
+						className: 'expand-right',
+						onclick: () => {
+							Object.assign(state, {
+								draft: null,
+								isChanged: false,
+							});
+						},
+					}, '🗑︎']
+					: ['button', {
 						className: 'expand-right',
 						onclick: () => {
 							state.isEditing = false;
 						},
-					}, '✕']
-					: isChanged
-						? ['button', {
-							className: 'expand-right',
-							onclick: () => {
-								const [editInput] = editRef;
-								const { value } = editInput;
-								
-								Object.assign(state, {
-									draft: value === files[pathname] ? null : value,
-									isChanged: false,
-								});
-							},
-						}, '👁']
-						: ['button', {
-							className: 'expand-right',
-							onclick: () => {
-								const { files } = state;
-								const [editInput] = editRef;
-								files[pathname] = editInput.value;
-								storeSession();
-								state.draft = null;
-							},
-						}, '🖫'],
+					}, '✕'],
 			...astNodes.map(node => renderAstNode(node, definitions)),
 		],
 		!isEditing && renderRightMenu(manifest),

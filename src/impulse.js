@@ -8,7 +8,7 @@ const options = {
 	sourceType: 'module',
 };
 
-function parseMD (text) {
+function mapNode (text) {
 	const references = text.match(/\[.*?\]: +.*/g) || [];
 	const tags = `\n${text.trim()}\n`.match(/\s#\S+(?!\})/g) || [];
 	const sections = `\n${text.trim()}\n`.split(/(?=\n#+ )/) || [];
@@ -85,7 +85,7 @@ function parseJS (text) {
 export function parse (text, type) {
 	switch (type) {
 		case 'js': return parseJS(text);
-		case 'md': return parseMD(text);
+		case 'md': return mapNode(text);
 	}
 }
 
