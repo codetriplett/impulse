@@ -5,9 +5,8 @@
 import { parse } from './parse';
 import { updateNode } from './map';
 import { getObject } from './common';
-import { processIdOld, findByType } from './parse';
+import { parseMD } from './parse';
 import { createState, onRender } from '@triplett/stew';
-import { parse as mapNodetoAST } from '@textlint/markdown-to-ast';
 
 const { pathname, hash } = window.location;
 
@@ -24,6 +23,8 @@ export const state = createState({
 	isTemplateFocused: false,
 	isChanged: false,
 	draft: null,
+	draftTemplate: null,
+	draftProps: null,
 });
 
 function updateFile (path, text, type) {
@@ -288,11 +289,21 @@ function renderChildren (children) {
 	];
 }
 
-function scopeTree (allNodes, ...ranges) {
-	return allNodes.filter(node => {
-		const { type, range } = node;
-		return type === 'Definition' || ranges.some(([start, end]) => range[0] >= start && range[1] <= end);
-	});
+function scopeLayout (layout, start, finish) {
+	const allChildren = layout.splice(2);
+	const fromIndex = allChildren.findIndex(child => child?.[1]?.key >= start);
+
+	if (fromIndex === -1) {
+		return;
+	}
+
+	const toIndex = allChildren.findIndex(child => child?.[1]?.key >= finish);
+
+	const children = toIndex === -1
+		? allChildren.splice(fromIndex)
+		: allChildren.splice(fromIndex, toIndex - fromIndex);
+
+	layout.push(...children);
 }
 
 function renderCitation (hashPath, manifest) {
@@ -306,14 +317,13 @@ function renderCitation (hashPath, manifest) {
 			const { files } = state;
 			const { start, finish } = manifest[hashPath];
 			const file = files[path];
-			const astNodes = mapNodetoAST(file).children;
-			const scopedNodes = scopeTree(astNodes, [start, finish]);
+			const layout = parseMD(file);
+			scopeLayout(layout, start, finish);
 			memo[0] = hashPath;
-			memo[1] = scopedNodes;
-			memo[2] = prepareDefinitions(astNodes);
+			memo[1] = layout
 		}
 
-		const [scopedNodes, definitions] = memo.slice(1);
+		const [layout] = memo.slice(1);
 
 		return ['div', { className: `snip ${isActive ? '' : 'snip-inactive'}` },
 			['button', {
@@ -326,7 +336,7 @@ function renderCitation (hashPath, manifest) {
 					storeSession();
 				},
 			}, '✕'],
-			...scopedNodes.map(node => renderAstNode(node, definitions, path)),
+			layout,
 		];
 	};
 }
@@ -405,47 +415,6 @@ function renderRightMenu (manifest) {
 	},
 		...snips.map(path => renderCitation(path, manifest)),
 	];
-}
-
-let headerIndex = 0;
-
-function renderAstNode (node, definitions, remotePath = '') {
-	const { type, children } = node;
-
-	if (type === 'Header') {
-		processIdOld(node);
-	}
-
-	const childElements = children ? children.map(node => renderAstNode(node, definitions, remotePath)) : [];
-
-	switch (type) {
-		case 'Header': {
-			const { id = headerIndex++, depth } = node;
-
-			return [depth, { id },
-				['a', { href: `${remotePath}#${id}` }, ...childElements],
-			];
-		}
-		case 'Paragraph': {
-			return ['p', null, ...childElements];
-		}
-		case 'Str': {
-			const { value } = node;
-			return value;
-		}
-		case 'LinkReference': {
-			const { label } = node;
-			const href = definitions[label];
-
-			if (!href) {
-				return;
-			}
-
-			return ['a', {
-				href,
-			}, ...childElements];
-		}
-	}
 }
 
 // WEDNESDAY: edit mode (when left button is clicked)
@@ -537,25 +506,21 @@ function resizeTextarea (ref) {
 	textarea.style.height = `${scrollHeight}px`;
 }
 
-function prepareDefinitions (astNodes) {
-	const definitionNodes = findByType(astNodes, 'Definition');
-	const definitions = {};
-
-	for (const node of definitionNodes) {
-		const { label, url } = node;
-		definitions[label] = url;
-	}
-
-	return definitions;
-}
-
 const templateRef = [];
 const editRef = [];
+
+// TODO: save template to JS file
+// - set resource paths at top as single line comments
+// - set schema as module.exports
+// - set render function and optional hydrate function to wrap markdown rendering (passing content and props as params)
+//   - hydrate will also receive container element
+// - set stew extention to allow webGL shaders (e.g. ['canvas', { width, height }, shader`...`, shader`...`])
 
 function EditingPanel (memo) {
 	const { files, isTemplateFocused } = state;
 	const { pathname } = window.location;
-	const file = files[pathname];
+	const file = files[pathname] || '';
+	const templateFile = files[`${pathname}.js`] || '';
 	
 	onRender(() => {
 		if (isTemplateFocused) {
@@ -590,7 +555,7 @@ function EditingPanel (memo) {
 				resizeTextarea(templateRef);
 				state.isChanged = true;
 			},
-		}],
+		}, templateFile],
 		!isTemplateFocused && ['div', {
 			className: 'form',
 		}, 'PUT FORM HERE'],
@@ -615,29 +580,54 @@ function HomePage (memo) {
 }
 
 function Page (memo) {
-	const { files, hash, draft, isLeftNavExpanded, isChanged, isEditing, snips } = state;
-	const [prevContent, prevHash] = memo;
+	const { files, hash, draft, templateDraft, isLeftNavExpanded, isChanged, isEditing, snips } = state;
+	const [prevContent, prevTemplateContent, prevHash] = memo;
 	const hashPath = `${pathname}${hash}`;
 	const content = draft || files[pathname];
+	const templateContent = templateDraft || files[`${pathname}.js`];
+	const ref = [];
 
 	if (content !== prevContent || hash !== prevHash) {
 		memo[0] = content;
-		memo[1] = hash;
+		memo[1] = templateContent;
+		memo[2] = hash;
 
 		if (content !== prevContent) {
-			const astNodes = mapNodetoAST(content).children;
-			memo[2] = astNodes; // TODO: process id on headers (remove from string and add id prop)
-			memo[3] = prepareDefinitions(astNodes);
+			memo[3] = parseMD(content);
+		}
+
+		if (content !== prevContent || templateContent !== prevTemplateContent) {
+			onRender(() => {
+				const [main] = ref;
+				let { shadowRoot } = main;
+
+				if (!shadowRoot) {
+					const style = document.querySelector('#styles');
+					const stylesheet = new CSSStyleSheet();
+					stylesheet.replaceSync(style.innerText);
+					shadowRoot = main.attachShadow({ mode: 'open' });
+					shadowRoot.adoptedStyleSheets = [stylesheet];
+				}
+
+				window.module.name = '';
+				const { render } = eval(`(() => { function render (layout) { return layout; }; ${templateContent}; return { render }; })()`);
+				const schema = window.require('')
+				const processedLayout = render(layout);
+				memo[4] = schema;
+				window.stew(shadowRoot, processedLayout);
+			});
 		}
 
 		const manifest = {};
-		memo[4] = manifest;
+		memo[5] = manifest;
 		getCitations(pathname, manifest);
 		// getMentions(pathname, citations);
 	}
 
-	const [astNodes, definitions, manifest] = memo.slice(2);
+	const [layout, schema, manifest] = memo.slice(3);
 	headerIndex = 0;
+
+	// TODO: render form using schema
 
 	return ['div', {
 		className: 'app',
@@ -653,10 +643,6 @@ function Page (memo) {
 		['div', {
 			className: 'main',
 		},
-			// while in editing mode, have this change between...
-			// - clear: if template path is filled and not being edited
-			// - create: if template path is populated and being edited
-			// - customize: if template path is empty
 			!isEditing
 				? ['button', {
 					className: 'expand-left',
@@ -669,10 +655,11 @@ function Page (memo) {
 						className: 'expand-left',
 						onclick: () => {
 							const [editInput] = editRef;
-							const { value } = editInput;
+							const [templateInput] = templateRef;
 							
 							Object.assign(state, {
-								draft: value === files[pathname] ? null : value,
+								draft: editInput.value === files[pathname] ? null : editInput.value,
+								draftTemplate: templateInput.value === files[`${pathname}.js`] ? null : templateInput.value,
 								isChanged: false,
 							});
 						},
@@ -682,11 +669,14 @@ function Page (memo) {
 						onclick: () => {
 							const { files } = state;
 							const [editInput] = editRef;
+							const [templateInput] = templateRef;
 							files[pathname] = editInput.value;
+							files[`${pathname}.js`] = templateInput.value;
 							storeSession();
 							state.draft = null;
 						},
 					}, '🖫'],
+			// TODO: have separate 'reset' and 'delete' button
 			!isEditing
 				? ['button', {
 					className: 'expand-right',
@@ -710,7 +700,11 @@ function Page (memo) {
 							state.isEditing = false;
 						},
 					}, '✕'],
-			...astNodes.map(node => renderAstNode(node, definitions)),
+			['main', { ref },
+				// server render with this property, and make sure stew sets it properly
+				// have stew handle hydration and updates properly with shadowrootmode set to open
+				// ['template', { shadowrootmode: 'open' }, layout],
+			],
 		],
 		!isEditing && renderRightMenu(manifest),
 	];
@@ -718,28 +712,30 @@ function Page (memo) {
 
 if (typeof window !== 'undefined') {
 	recallSession();
-
-	const root = document.querySelector(':root');
 	const { theme = 'dark' } = state.settings;
+	const root = document.querySelector(':root');
 
-	if (theme === 'dark') {
-		root.style.setProperty('--page-background', '#333');
-		root.style.setProperty('--paper-background', '#222');
-		root.style.setProperty('--paper-shadow', '#111');
-		root.style.setProperty('--paper-font-color', '#ccc');
-		root.style.setProperty('--paper-inactive-background', '#333');
-		root.style.setProperty('--button-background', '#444');
-		root.style.setProperty('--button-border-color', '#555');
-		root.style.setProperty('--button-font-color', '#777');
-		root.style.setProperty('--button-hover-background', '#555');
-		root.style.setProperty('--button-hover-border-color', '#666');
-		root.style.setProperty('--button-hover-font-color', '#777');
-		root.style.setProperty('--navigation-font-color', '#ccc');
-		root.style.setProperty('--reference-font-color', '#999');
-		root.style.setProperty('--reference-active-background', '#555');
-		root.style.setProperty('--divider-color', '#777');
-		root.style.setProperty('--link-font-color', '#4b4bde');
-		root.style.setProperty('--link-visited-font-color', '#8d54c1');
+	switch (theme) {
+		case 'dark': {
+			root.style.setProperty('--page-background', '#333');
+			root.style.setProperty('--paper-background', '#222');
+			root.style.setProperty('--paper-shadow', '#111');
+			root.style.setProperty('--paper-font-color', '#ccc');
+			root.style.setProperty('--paper-inactive-background', '#333');
+			root.style.setProperty('--button-background', '#444');
+			root.style.setProperty('--button-border-color', '#555');
+			root.style.setProperty('--button-font-color', '#777');
+			root.style.setProperty('--button-hover-background', '#555');
+			root.style.setProperty('--button-hover-border-color', '#666');
+			root.style.setProperty('--button-hover-font-color', '#777');
+			root.style.setProperty('--navigation-font-color', '#ccc');
+			root.style.setProperty('--reference-font-color', '#999');
+			root.style.setProperty('--reference-active-background', '#555');
+			root.style.setProperty('--divider-color', '#777');
+			root.style.setProperty('--link-font-color', '#4b4bde');
+			root.style.setProperty('--link-visited-font-color', '#8d54c1');
+			break;
+		}
 	}
 
 	stew('#app', pathname === '/' ? HomePage : Page);

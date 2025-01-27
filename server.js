@@ -38,7 +38,7 @@ function send (res, content, type = types.txt) {
 	res.end(content);
 }
 
-createServer(({ url }, res) => {
+createServer(({ url, method }, res) => {
 	const regex = /^(?:\/+)?(.*?)(?:\.([^/.?#]*)|\/*)?(?:\?(.*?))?$/;
 	let [, path = '', extension] = url.match(regex);
 

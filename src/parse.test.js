@@ -1,6 +1,6 @@
 const { parseJS, parseMD, mapNode, parse } = require('./parse');
 
-describe('parseJS', () => {
+describe.skip('parseJS', () => {
 	it('parses default import', () => {
 		const actual = parseJS(
 `import main from './file';
@@ -262,14 +262,16 @@ export const local = main;`);
 	});
 });
 
-describe.only('parseMD', () => {
-	it('parses header', () => {
+describe('parseMD', () => {
+	it('parses header without id', () => {
 		const actual = parseMD(`
 # abc
 		`);
 
-		expect(actual).toEqual(['', { key: '0-9' },
-			[1, { key: '1-6' }, 'abc'],
+		expect(actual).toEqual(['', { key: 0 },
+			[1, { key: 1, id: 'header0' },
+				['a', { href: '#header0' }, 'abc'],
+			],
 		]);
 	});
 
@@ -278,9 +280,25 @@ describe.only('parseMD', () => {
 # abc {#xyz}
 		`);
 
-		expect(actual).toEqual(['', { key: '0-16' },
-			[1, { key: '1-13', id: 'xyz' },
+		expect(actual).toEqual(['', { key: 0 },
+			[1, { key: 1, id: 'xyz' },
 				['a', { href: '#xyz' }, 'abc'],
+			],
+		]);
+	});
+
+	it('skips existing ids', () => {
+		const actual = parseMD(`
+# abc {#header0}
+# xyz
+		`);
+
+		expect(actual).toEqual(['', { key: 0 },
+			[1, { key: 1, id: 'header0' },
+				['a', { href: '#header0' }, 'abc'],
+			],
+			[1, { key: 18, id: 'header1' },
+				['a', { href: '#header1' }, 'xyz'],
 			],
 		]);
 	});
@@ -290,8 +308,8 @@ describe.only('parseMD', () => {
 abc
 		`);
 
-		expect(actual).toEqual(['', { key: '0-7' },
-			['p', { key: '1-4' }, 'abc'],
+		expect(actual).toEqual(['', { key: 0 },
+			['p', { key: 1 }, 'abc'],
 		]);
 	});
 
@@ -301,10 +319,10 @@ abc
 - xyz
 		`);
 
-		expect(actual).toEqual(['', { key: '0-15' },
-			['ul', { key: '1-15' },
-				['li', { key: '1-6' }, 'abc'],
-				['li', { key: '7-12' }, 'xyz'],
+		expect(actual).toEqual(['', { key: 0 },
+			['ul', { key: 1 },
+				['li', { key: 1 }, 'abc'],
+				['li', { key: 7 }, 'xyz'],
 			],
 		]);
 	});
@@ -315,10 +333,10 @@ abc
 2. xyz
 		`);
 
-		expect(actual).toEqual(['', { key: '0-17' },
-			['ol', { key: '1-17' },
-				['li', { key: '1-7' }, 'abc'],
-				['li', { key: '8-14' }, 'xyz'],
+		expect(actual).toEqual(['', { key: 0 },
+			['ol', { key: 1 },
+				['li', { key: 1 }, 'abc'],
+				['li', { key: 8 }, 'xyz'],
 			],
 		]);
 	});
@@ -330,13 +348,13 @@ abc
 - xyz
 		`);
 
-		expect(actual).toEqual(['', { key: '0-16' },
-			['ul', { key: '1-16' },
-				['li', { key: '1-6' },
-					['p', { key: '3-6' }, 'abc'],
+		expect(actual).toEqual(['', { key: 0 },
+			['ul', { key: 1 },
+				['li', { key: 1 },
+					['p', { key: 3 }, 'abc'],
 				],
-				['li', { key: '8-13' },
-					['p', { key: '10-13' }, 'xyz'],
+				['li', { key: 8 },
+					['p', { key: 10 }, 'xyz'],
 				],
 			],
 		]);
@@ -347,9 +365,9 @@ abc
 > abc
 		`);
 
-		expect(actual).toEqual(['', { key: '0-9' },
-			['blockquote', { key: '1-6' },
-				['p', { key: '3-6' }, 'abc'],
+		expect(actual).toEqual(['', { key: 0 },
+			['blockquote', { key: 1 },
+				['p', { key: 3 }, 'abc'],
 			],
 		]);
 	});
@@ -359,22 +377,22 @@ abc
 \`abc\`
 		`);
 
-		expect(actual).toEqual(['', { key: '0-9' },
-			['p', { key: '1-6' },
-				['code', { key: '1-6' }, 'abc'],
+		expect(actual).toEqual(['', { key: 0 },
+			['p', { key: 1 },
+				['code', { key: 1 }, 'abc'],
 			],
 		]);
 	});
 
 	it('parses code block', () => {
 		const actual = parseMD(`
-\`\`\`
+\`\`\`json
 abc
 \`\`\`
 		`);
 
-		expect(actual).toEqual(['', { key: '0-15' },
-			['pre', { key: '1-12' },
+		expect(actual).toEqual(['', { key: 0 },
+			['pre', { key: 1, 'data-lang': 'json' },
 				['code', {}, 'abc'],
 			],
 		]);
@@ -385,8 +403,8 @@ abc
 ---
 		`);
 
-		expect(actual).toEqual(['', { key: '0-7' },
-			['hr', { key: '1-4' }],
+		expect(actual).toEqual(['', { key: 0 },
+			['hr', { key: 1 }],
 		]);
 	});
 
@@ -396,10 +414,26 @@ abc
 xyz
 		`);
 
-		expect(actual).toEqual(['', { key: '0-13' },
-			['p', { key: '1-10' },
+		expect(actual).toEqual(['', { key: 0 },
+			['p', { key: 1 },
 				'abc',
-				['br', { key: '4-7' }],
+				['br', { key: 4 }],
+				'xyz',
+			],
+		]);
+	});
+
+	it('parses line break without space', () => {
+		const actual = parseMD(`
+abc [lmno](/)
+xyz
+		`);
+
+		expect(actual).toEqual(['', { key: 0 },
+			['p', { key: 1 },
+				'abc ',
+				['a', { key: 5, href: '/' }, 'lmno'],
+				['br', {}],
 				'xyz',
 			],
 		]);
@@ -410,9 +444,9 @@ xyz
 *abc*
 		`);
 
-		expect(actual).toEqual(['', { key: '0-9' },
-			['p', { key: '1-6' },
-				['em', { key: '1-6' }, 'abc'],
+		expect(actual).toEqual(['', { key: 0 },
+			['p', { key: 1 },
+				['em', { key: 1 }, 'abc'],
 			],
 		]);
 	});
@@ -422,9 +456,21 @@ xyz
 **abc**
 		`);
 
-		expect(actual).toEqual(['', { key: '0-11' },
-			['p', { key: '1-8' },
-				['strong', { key: '1-8' }, 'abc'],
+		expect(actual).toEqual(['', { key: 0 },
+			['p', { key: 1 },
+				['strong', { key: 1 }, 'abc'],
+			],
+		]);
+	});
+
+	it('parses strikethrough', () => {
+		const actual = parseMD(`
+~~abc~~
+		`);
+
+		expect(actual).toEqual(['', { key: 0 },
+			['p', { key: 1 },
+				['del', { key: 1 }, 'abc'],
 			],
 		]);
 	});
@@ -434,9 +480,9 @@ xyz
 [abc](/xyz "lmno")
 		`);
 
-		expect(actual).toEqual(['', { key: '0-22' },
-			['p', { key: '1-19' },
-				['a', { key: '1-19', href: '/xyz', title: 'lmno' }, 'abc'],
+		expect(actual).toEqual(['', { key: 0 },
+			['p', { key: 1 },
+				['a', { key: 1, href: '/xyz', title: 'lmno' }, 'abc'],
 			],
 		]);
 	});
@@ -447,9 +493,9 @@ xyz
 [abc][lmno]
 		`);
 
-		expect(actual).toEqual(['', { key: '0-28' },
-			['p', { key: '14-25' },
-				['a', { key: '14-25', href: '/xyz' }, 'abc'],
+		expect(actual).toEqual(['', { key: 0 },
+			['p', { key: 14 },
+				['a', { key: 14, href: '/xyz' }, 'abc'],
 			],
 		]);
 	});
@@ -459,9 +505,9 @@ xyz
 ![abc](/xyz.jpg)
 		`);
 
-		expect(actual).toEqual(['', { key: '0-20' },
-			['p', { key: '1-17' },
-				['img', { key: '1-17', src: '/xyz.jpg', alt: 'abc' }],
+		expect(actual).toEqual(['', { key: 0 },
+			['p', { key: 1 },
+				['img', { key: 1, src: '/xyz.jpg', alt: 'abc' }],
 			],
 		]);
 	});
@@ -473,20 +519,142 @@ xyz
 |123|456 |789|
 		`);
 
-		expect(actual).toEqual(['', { key: '0-48' },
-			['table', { key: '1-45' },
+		expect(actual).toEqual(['', { key: 0 },
+			['table', { key: 1 },
 				['thead', {},
-					['tr', { key: '1-15' },
-						['th', { key: '1-6' }, 'abc'],
-						['th', { key: '6-11', style: 'text-align:center;' }, 'lmno'],
-						['th', { key: '11-15', style: 'text-align:right;' }, 'xyz'],
+					['tr', { key: 1 },
+						['th', { key: 1 }, 'abc'],
+						['th', { key: 6, style: 'text-align:center;' }, 'lmno'],
+						['th', { key: 11, style: 'text-align:right;' }, 'xyz'],
 					],
 				],
 				['tbody', {},
-					['tr', { key: '31-45' },
-						['td', { key: '31-36' }, '123'],
-						['td', { key: '36-41', style: 'text-align:center;' }, '456'],
-						['td', { key: '41-45', style: 'text-align:right;' }, '789'],
+					['tr', { key: 31 },
+						['td', { key: 31 }, '123'],
+						['td', { key: 36, style: 'text-align:center;' }, '456'],
+						['td', { key: 41, style: 'text-align:right;' }, '789'],
+					],
+				],
+			],
+		]);
+	});
+
+	it('parses checkbox', () => {
+		const actual = parseMD(`
+[ ] abc
+[x] xyz
+		`);
+
+		expect(actual).toEqual(['', { key: 0 },
+			['p', { key: 1 },
+				['input', { type: 'checkbox', id: 'checkbox0', checked: false }],
+				['label', { for: 'checkbox0' }, 'abc'],
+				['br', {}],
+				['input', { type: 'checkbox', id: 'checkbox1', checked: true }],
+				['label', { for: 'checkbox1' }, 'xyz'],
+			],
+		]);
+	});
+
+	it('parses checkbox list', () => {
+		const actual = parseMD(`
+- [ ] abc
+- [x] xyz
+		`);
+
+		expect(actual).toEqual(['', { key: 0 },
+			['ul', { key:1 },
+				['li', { key: 1 },
+					['input', { type: 'checkbox', id: 'checkbox0', checked: false }],
+					['label', { for: 'checkbox0' }, 'abc'],
+				],
+				['li', { key: 11 },
+					['input', { type: 'checkbox', id: 'checkbox1', checked: true }],
+					['label', { for: 'checkbox1' }, 'xyz'],
+				],
+			],
+		]);
+	});
+
+	// TODO: write custom JS parser
+	// - it's getting too hard to retroactively add these missing features
+	// - parser should convert directly into stew structure
+	it.skip('parses definition list', () => {
+		const actual = parseMD(`
+abc
+: lm
+
+xyz
+: no
+		`);
+
+		expect(actual).toEqual(['', {},
+
+		]);
+	});
+
+	it.skip('parses highlight', () => {
+		const actual = parseMD(`
+==abc==
+		`);
+
+		expect(actual).toEqual(['', { key: 0 },
+			['p', { key: 1 },
+				['mark', { key: 1 }, 'abc'],
+			],
+		]);
+	});
+
+	// this is being treated as <del> (~~)
+	it.skip('parses subscript', () => {
+		const actual = parseMD(`
+a~b~c
+		`);
+
+		expect(actual).toEqual(['', { key: 0 },
+			['p', { key: 1 },
+				'a',
+				['sub', { key: 1 }, 'b'],
+				'c',
+			],
+		]);
+	});
+
+	it.skip('parses superscript', () => {
+		const actual = parseMD(`
+a^b^c
+		`);
+
+		expect(actual).toEqual(['', { key: 0 },
+			['p', { key: 1 },
+				'a',
+				['sup', { key: 1 }, 'b'],
+				'c',
+			],
+		]);
+	});
+	
+	// needs to support links to and back from footnotes
+	// - maybe mark in bold the one navigated from, and remove bold when clicked
+	it.skip('parses footnote', () => {
+		const actual = parseMD(`
+[^lmno]: xyz
+
+abc[^lmno]
+		`);
+
+		expect(actual).toEqual(['', { key: 0 },
+			['p', { key: 1 },
+				'abc',
+				['sup', { key: 1, id: 'reference0' },
+					['a', { href: '#footnote0' }, '[1]'],
+				],
+			],
+			['ol', {},
+				['li', { id: 'footnote0' },
+					'xyz',
+					['sup', {},
+						['a', { href: '#reference0' }, 'a'],
 					],
 				],
 			],
@@ -607,10 +775,13 @@ describe('mapNode', () => {
 	// - updateNode will append these internal refs has hashes on info string, and will use the rest of the array for external refs
 	//   - in this case, imports probably can either remain as internal refs (less processing), or just as a string
 	it('file reference', () => {
-		const actual = mapNode(
+		const text =
 `[file]: ./file
 # Header {#local}
-[File][file]`);
+[File][file]`;
+
+		const layout = parseMD(text);
+		const actual = mapNode(layout, text.length);
 
 		expect(actual).toEqual({
 			'./file': {
@@ -624,10 +795,13 @@ describe('mapNode', () => {
 	});
 
 	it('name reference', () => {
-		const actual = mapNode(
+		const text =
 `[main]: ./file#remote
 # Header {#local}
-[File][main]`);
+[File][main]`;
+
+		const layout = parseMD(text);
+		const actual = mapNode(layout, text.length);
 
 		expect(actual).toEqual({
 			'./file': {
@@ -648,9 +822,12 @@ describe('mapNode', () => {
 	// GOAL: writing notes should be as simple as possible, just stick to links to directly reference snips under headlines
 
 	it('inline file reference', () => {
-		const actual = mapNode(
+		const text =
 `# Header {#local}
-[File](./file)`);
+[File](./file)`;
+
+		const layout = parseMD(text);
+		const actual = mapNode(layout, text.length);
 
 		expect(actual).toEqual({
 			'./file': {
@@ -664,9 +841,12 @@ describe('mapNode', () => {
 	});
 
 	it('inline snip reference', () => {
-		const actual = mapNode(
+		const text =
 `# Header {#local}
-[File](./file#remote)`);
+[File](./file#remote)`;
+
+		const layout = parseMD(text);
+		const actual = mapNode(layout, text.length);
 
 		expect(actual).toEqual({
 			'./file': {
@@ -680,12 +860,15 @@ describe('mapNode', () => {
 	});
 
 	it('multiple references', () => {
-		const actual = mapNode(
+		const text =
 `[main]: ./file#remote
 # First Header {#first}
 [File][main]
 # Second Header {#second}
-[File][main]`);
+[File][main]`;
+
+		const layout = parseMD(text);
+		const actual = mapNode(layout, text.length);
 
 		expect(actual).toEqual({
 			'./file': {
@@ -700,49 +883,58 @@ describe('mapNode', () => {
 	});
 
 	it('nameless header', () => {
-		const actual = mapNode(
+		const text =
 `[file]: ./file
 # Header
-[File][file]`);
+[File][file]`;
+
+		const layout = parseMD(text);
+		const actual = mapNode(layout, text.length);
 
 		expect(actual).toEqual({
 			'./file': {
-				'': ['0'],
+				'': ['header0'],
 			},
 			'': {
-				0: '15-36 Header',
+				header0: '15-36 Header',
 				'': '0-15',
 			},
 		});
 	});
 
 	it('skips duplicate name', () => {
-		const actual = mapNode(
+		const text =
 `[file]: ./file
 # First Header {#local}
 [File][file]
 # Second Header {#local}
-[File][file]`);
+[File][file]`;
+
+		const layout = parseMD(text);
+		const actual = mapNode(layout, text.length);
 
 		expect(actual).toEqual({
 			'./file': {
-				'': ['local', '0'],
+				'': ['local', 'header0'],
 			},
 			'': {
 				local: '15-52 First Header',
-				0: '52-89 Second Header',
+				header0: '52-89 Second Header',
 				'': '0-15 local',
 			},
 		});
 	});
 
 	it('anchors to parent', () => {
-		const actual = mapNode(
+		const text =
 `[file]: ./file
 # Parent Header {#parent}
 [File][file]
 ## Child Header {#child}
-[File][file]`);
+[File][file]`;
+
+		const layout = parseMD(text);
+		const actual = mapNode(layout, text.length);
 
 		expect(actual).toEqual({
 			'./file': {
@@ -892,7 +1084,7 @@ describe('mapNode', () => {
 // 	});
 });
 
-describe('parse', () => {
+describe.skip('parse', () => {
 	it('parses default reference', () => {
 		const actual = parse(
 `[main]: ./file

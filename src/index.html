@@ -4,6 +4,35 @@
 		<title>Impulse</title>
 		<link href="/favicon.ico" rel="icon" type="image/x-icon">
 		<link href="/index.css" rel="stylesheet">
+		<style id="styles">
+			h1 a:only-child,
+			h2 a:only-child,
+			h3 a:only-child,
+			h4 a:only-child,
+			h5 a:only-child,
+			h6 a:only-child {
+				position: relative;
+				text-decoration: none;
+				color: var(--paper-font-color);
+			}
+			h1 a:only-child:hover:after,
+			h2 a:only-child:hover:after,
+			h3 a:only-child:hover:after,
+			h4 a:only-child:hover:after,
+			h5 a:only-child:hover:after,
+			h6 a:only-child:hover:after {
+				content: '#';
+				position: absolute;
+				left: calc(100% + 5px);
+			}
+
+			a {
+				color: var(--link-font-color);
+			}
+			a:visited {
+				color: var(--link-visited-font-color);
+			}
+		</style>
 		<script>
 			(function () {
 				const modules = {};
