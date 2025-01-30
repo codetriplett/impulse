@@ -32,9 +32,10 @@ function updateFile (path, text, type) {
 		return;
 	}
 
-	const { map } = state;
+	const { files, map } = state;
 	const node = parse(text, 'md');
 	updateNode(map, path, node);
+	files[path] = text;
 }
 
 export function recallSession () {
@@ -579,24 +580,106 @@ function HomePage (memo) {
 	return ['p', null, 'Home Page'];
 }
 
+// RENDER
+
+// place a code fence before first heading to set a template
+// - this will be renderer (with h1 id as props param name, and '' in props as final markdown)
+// - have code fence for h1 set schema
+// - have code fence for h2s set states or functions
+// - have h3s set cues (if under state) or params (if under functions)
+
+// if a template has a direct parent that is also a template...
+// - merge its schema with the current one, favoring current one if names overlap
+// - pass props and output of current render as '' prop to parent renderer
+// - JSON for final page will include all merged props
+// - this is recursive, so it needs to find full chain of parent templates before generating form and rendering bottom layer
+// - this will allow pages to share common elements, like navigation
+
+
+
+// SCHEMA
+// { name: '(\w+) label "description"' }
+// - stuff around () defines the type of value, and the rest is the label for the field in the form
+// - use first instance of ( and last instance of ) to locate the contents of ()
+// - stuff in quotes is optional, and provides a title shown when hovering over form label, similar to what markdown allows for links
+
+// () boolean, which are optional by default
+// template/path(\w*) fragment, which can provide a pattern for the final part of the path to fill in
+
+// (\w+) string that matches pattern
+// ([a-z])i with flags
+
+// (5) any number 5 or below
+// -5(5) any number between -5 and 5
+// -5() any number -5 or above
+// -5() any number -5 or above
+
+// ['(5) array', ...] // can add up to 5 items from the options in the list
+
+// can put ? after () to mark the field as optional, like an optional regex group
+// can put flags after () or ()? for regex to use
+
+
+// MAJOR STEW CHANGES
+
+// props: { context, ...props } // this way any wrapper element can set a new context
+// memo: { children, ...memo } // children makes sense here since it isn't something that drives how component renders, like props
+// {}: use toString when server rendering, and ignore when encountered client side (have hydrate skip over its dom element as well)
+// () => {}: custom processer, runs only on server render and on hydrate (with element passed in), or just once client-size if it wasn't server rendered
+// [component, props, ...children], new fiber-based subcomponent. makes it easier to pass props without wrapping another function
+
+function processTemplate (pathname, layout, props) {
+	const { files, map } = state;
+	const names = pathname.replace(/^\/+|\/+$/g, '').split('/');
+	const schemas = [];
+
+	for (let i = 1; i < names.length; i++) {
+		const pathname = `/${names.slice(0, -i).join('/')}`;
+		const node = map[pathname];
+		
+		if (!node) {
+			break;
+		}
+
+		const mainInfo = node?.['']?.['']?.[0] || '';
+		const [range] = mainInfo.split(' ');
+		const [, codeRange] = range.split(':');
+		const file = files[pathname];
+
+		if (!codeRange || !file) {
+			break;
+		}
+
+		const [start, finish] = codeRange.split('-');
+		// TODO: append other named functions and states before return statement
+		const renderer = new Function(`return (${file.slice(start, finish)})(...arguments)`);
+		
+		// TODO: get props from json file that is paired with md file
+		// - it should have all parent form data merged
+		layout = renderer({ ...props, '': layout });
+	}
+
+	// TODO: merge schemas into one
+	return [layout, ...schemas];
+}
+
 function Page (memo) {
-	const { files, hash, draft, templateDraft, isLeftNavExpanded, isChanged, isEditing, snips } = state;
-	const [prevContent, prevTemplateContent, prevHash] = memo;
+	const { files, hash, draft, isLeftNavExpanded, isChanged, isEditing, snips } = state;
+	const [prevContent, prevHash] = memo;
 	const hashPath = `${pathname}${hash}`;
-	const content = draft || files[pathname];
-	const templateContent = templateDraft || files[`${pathname}.js`];
+	const content = draft || files[pathname] || '';
 	const ref = [];
 
 	if (content !== prevContent || hash !== prevHash) {
 		memo[0] = content;
-		memo[1] = templateContent;
-		memo[2] = hash;
+		memo[1] = hash;
 
 		if (content !== prevContent) {
-			memo[3] = parseMD(content);
-		}
+			const contentLayout = parseMD(content);
+			const [layout, ...schemas] = processTemplate(pathname, contentLayout, {});
+			memo[2] = layout;
+			memo[3] = schemas;
 
-		if (content !== prevContent || templateContent !== prevTemplateContent) {
 			onRender(() => {
 				const [main] = ref;
 				let { shadowRoot } = main;
@@ -609,22 +692,18 @@ function Page (memo) {
 					shadowRoot.adoptedStyleSheets = [stylesheet];
 				}
 
-				window.module.name = '';
-				const { render } = eval(`(() => { function render (layout) { return layout; }; ${templateContent}; return { render }; })()`);
-				const schema = window.require('')
-				const processedLayout = render(layout);
-				memo[4] = schema;
-				window.stew(shadowRoot, processedLayout);
+				const layout = memo[2];
+				window.stew(shadowRoot, layout);
 			});
 		}
 
 		const manifest = {};
-		memo[5] = manifest;
+		memo[4] = manifest;
 		getCitations(pathname, manifest);
 		// getMentions(pathname, citations);
 	}
 
-	const [layout, schema, manifest] = memo.slice(3);
+	const [schemas, manifest] = memo.slice(3);
 	headerIndex = 0;
 
 	// TODO: render form using schema
@@ -667,11 +746,9 @@ function Page (memo) {
 					: ['button', {
 						className: 'expand-left',
 						onclick: () => {
-							const { files } = state;
 							const [editInput] = editRef;
-							const [templateInput] = templateRef;
-							files[pathname] = editInput.value;
-							files[`${pathname}.js`] = templateInput.value;
+							const text = editInput.value;
+							updateFile(pathname, text, 'md');
 							storeSession();
 							state.draft = null;
 						},

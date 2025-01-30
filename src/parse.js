@@ -113,6 +113,7 @@ function processExtended (elements, nameless) {
 }
 
 const labelMap = new WeakMap();
+const rangeMap = new WeakMap();
 const idSet = new WeakSet();
 
 function parseNode (node, definitions, references, ids, nameless, path, tableAlign = [], i) {
@@ -139,15 +140,21 @@ function parseNode (node, definitions, references, ids, nameless, path, tableAli
 			return ['code', props, value];
 		}
 		case 'CodeBlock': {
-			const { lang } = node;
+			const { raw } = node;
+			const innerStart = start + raw.indexOf('\n') + 1;
+			const innerFinish = start + raw.lastIndexOf('```') - 1;
 			
-			if (lang) {
-				props['data-lang'] = lang;
-			}
+			// TODO: use lang to trigger custom renderers
+			// if (lang) {
+			// 	props['data-lang'] = lang;
+			// }
 
-			return ['pre', props,
+			const block = ['pre', props,
 				['code', {}, value],
 			];
+
+			rangeMap.set(block, `:${innerStart}-${innerFinish}`);
+			return block;
 		}
 		case 'HorizontalRule': {
 			return ['hr', props];
@@ -368,7 +375,7 @@ export function parseMD (text, path = '') {
 	return fragment;
 }
 
-export function findByType (candidates, expectedTag) {
+export function findByType (candidates, expectedTag, ...nestedTags) {
 	const matches = [];
 
 	for (const candidate of candidates) {
@@ -376,13 +383,21 @@ export function findByType (candidates, expectedTag) {
 			continue;
 		}
 
-		const [tag, props, ...children] = candidate;
+		const [tag,, ...children] = candidate;
 
-		if ('key' in props && (tag === expectedTag || expectedTag === 'h' && typeof tag === 'number')) {
-			matches.push(candidate);
+		if (tag === expectedTag || expectedTag === 'h' && typeof tag === 'number') {
+			if (!nestedTags.length) {
+				matches.push(candidate);
+			} else {
+				const nestedMatches = findByType(children, ...nestedTags);
+
+				if (nestedMatches.length) {
+					matches.push(candidate);
+				}
+			}
 		}
 
-		const additions = findByType(children, expectedTag);
+		const additions = findByType(children, expectedTag, ...nestedTags);
 		matches.push(...additions);
 	}
 
@@ -407,6 +422,7 @@ export function mapNode (layout, prevStart) {
 	const children = layout.slice(2);
 	const headings = findByType(children, 'h');
 	const links = findByType(children, 'a');
+	const blocks = findByType(children, 'pre', 'code');
 	const snips = [];
 
 	for (let i = headings.length - 1; i >= 0; i--) {
@@ -418,24 +434,33 @@ export function mapNode (layout, prevStart) {
 		const snip = [start, prevStart, depth, text, id, isExport];
 		snips.unshift(snip);
 		prevStart = start;
+		
+		const blockIndex = blocks.findLastIndex(block => block[1].key >= start);
+		const snipBlocks = blockIndex === -1 ? [] : blocks.splice(blockIndex);
+		snip.push(snipBlocks[0]);
 
 		const linkIndex = links.findLastIndex(link => link[1].key >= start);
 		const snipLinks = linkIndex === -1 ? [] : links.splice(linkIndex);
 		snip.push(...snipLinks);
 	}
 
-	snips.push([0, prevStart, 0, '', '', false, ...links]);
+	snips.push([0, prevStart, 0, '', '', false, blocks[0], ...links]);
 	const imports = {};
 	const locals = {};
 	const exports = [];
 	const stack = [];
 
 	for (const snip of snips) {
-		const [start, finish, depth, text, id, isExport, ...links] = snip;
+		const [start, finish, depth, text, id, isExport, block, ...links] = snip;
 
 		for (const link of links) {
-			const url = link[1].href;
-			const [, path = '.', name = ''] = url.match(/^([./].*?)?(?:#(.*?))?$/);
+			const { key, href } = link[1];
+
+			if (key === undefined) {
+				continue;
+			}
+
+			const [, path = '.', name = ''] = href.match(/^([./].*?)?(?:#(.*?))?$/);
 			const location = getObject(imports, path, {});
 			const remote = getObject(location, name, []);
 			remote.push(id);
@@ -443,7 +468,8 @@ export function mapNode (layout, prevStart) {
 
 		stack.splice(0, stack.length - depth + 1, id);
 		const parent = stack[1];
-		const info = `${start}-${finish}${parent ? `#${parent}` : ''}${text ? ` ${text}` : ''}`;
+		const blockRange = rangeMap.get(block) || '';
+		const info = `${start}-${finish}${blockRange}${parent ? `#${parent}` : ''}${text ? ` ${text}` : ''}`;
 		locals[id] = info;
 
 		if (!isExport) {
@@ -562,7 +588,8 @@ export function parse (text, type) {
 			return parseJS(text);
 		}
 		case 'md': {
-			return mapNode(text);
+			const layout = parseMD(text);
+			return mapNode(layout, text.length);
 		}
 	}
 }

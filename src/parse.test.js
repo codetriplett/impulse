@@ -1,4 +1,4 @@
-const { parseJS, parseMD, mapNode, parse } = require('./parse');
+const { parseJS, parseMD, findByType, mapNode, parse } = require('./parse');
 
 describe.skip('parseJS', () => {
 	it('parses default import', () => {
@@ -262,6 +262,50 @@ export const local = main;`);
 	});
 });
 
+describe('findByType', () => {
+	it('finds type', () => {
+		const actual = findByType([
+			'abc',
+			['p', { key: 0 }, 'lmno'],
+			'xyz',
+		], 'p');
+
+		expect(actual).toEqual([
+			['p', { key: 0 }, 'lmno'],
+		]);
+	});
+	
+	it('finds nested type', () => {
+		const actual = findByType([
+			['div', null,
+				'abc',
+				['p', { key: 0 }, 'lmno'],
+				'xyz',
+			],
+		], 'p');
+
+		expect(actual).toEqual([
+			['p', { key: 0 }, 'lmno'],
+		]);
+	});
+	
+	it('finds compound type', () => {
+		const actual = findByType([
+			['div', { key: 0 }, 'abc'],
+			['div', null,
+				['p', { key: 1 }, 'lmno'],
+			],
+			['div', { key: 2 }, 'xyz'],
+		], 'div', 'p');
+
+		expect(actual).toEqual([
+			['div', null,
+				['p', { key: 1 }, 'lmno'],
+			],
+		]);
+	});
+});
+
 describe('parseMD', () => {
 	it('parses header without id', () => {
 		const actual = parseMD(`
@@ -386,13 +430,13 @@ abc
 
 	it('parses code block', () => {
 		const actual = parseMD(`
-\`\`\`json
+\`\`\`
 abc
 \`\`\`
 		`);
 
 		expect(actual).toEqual(['', { key: 0 },
-			['pre', { key: 1, 'data-lang': 'json' },
+			['pre', { key: 1 },
 				['code', {}, 'abc'],
 			],
 		]);
@@ -945,6 +989,27 @@ describe('mapNode', () => {
 				child: '54-91#parent Child Header',
 				'': '0-15 parent child',
 			},
+		});
+	});
+
+	it('identifies template', () => {
+		const text =
+`\`\`\`
+...code
+\`\`\`
+# Header
+\`\`\`
+{ ...schema }
+\`\`\``;
+
+		const layout = parseMD(text);
+		const actual = mapNode(layout, text.length);
+
+		expect(actual).toEqual({
+			'': {
+				'': '0-16:4-11',
+				'header0': '16-46:29-42 Header',
+			}
 		});
 	});
 
