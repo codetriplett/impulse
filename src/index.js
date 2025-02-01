@@ -5,7 +5,7 @@
 import { parse } from './parse';
 import { updateNode } from './map';
 import { getObject } from './common';
-import { parseMD } from './parse';
+import { parseMD, extractBlocks, createFunction } from './parse';
 import { createState, onRender } from '@triplett/stew';
 
 const { pathname, hash } = window.location;
@@ -15,6 +15,7 @@ export const state = createState({
 	// exports: [],
 	files: {},
 	map: {},
+	templates: {},
 	hash,
 	path: `${pathname}${hash || '#'}`,
 	snips: [],
@@ -32,23 +33,27 @@ function updateFile (path, text, type) {
 		return;
 	}
 
-	const { files, map } = state;
+	const { files, map, templates } = state;
 	const node = parse(text, 'md');
+	const template = extractBlocks(text, node);
 	updateNode(map, path, node);
 	files[path] = text;
+	templates[path] = template;
 }
 
 export function recallSession () {
-	let files, map, snips, settings;
+	let files, map, templates, snips, settings;
 
 	try {
 		files = JSON.parse(window.localStorage.getItem('impulse:files') || '{}');
 		map = JSON.parse(window.localStorage.getItem('impulse:map'));
+		templates = JSON.parse(window.localStorage.getItem('impulse:templates'));
 		snips = JSON.parse(window.localStorage.getItem('impulse:snips') || '[]');
 		settings = JSON.parse(window.localStorage.getItem('impulse:settings') || '{}');
 	} catch (err) {
 		window.localStorage.removeItem('impulse:files');
 		window.localStorage.removeItem('impulse:map');
+		window.localStorage.removeItem('impulse:templates');
 		window.localStorage.removeItem('impulse:snips');
 		window.localStorage.removeItem('impulse:settings');
 		files = {};
@@ -56,11 +61,18 @@ export function recallSession () {
 		settings = {};
 	}
 
-	Object.assign(state, { files, map, snips, settings });
+	Object.assign(state, { files, map, templates, snips, settings });
 
-	if (!map) {
-		map = {};
-		state.map = map;
+	if (!map || !templates) {
+		if (!map) {
+			map = {};
+			state.map = map;
+		}
+
+		if (!templates) {
+			templates = {};
+			state.templates = templates;
+		}
 
 		for (const [path, text] of Object.entries(files)) {
 			if (!text) {
@@ -68,10 +80,18 @@ export function recallSession () {
 				continue;
 			}
 
-			updateFile(path, text, 'md');
+			if (!map[path]) {
+				updateFile(path, text, 'md');
+			}
+
+			if (!templates[path]) {
+				const node = map[path];
+				templates[path] = extractBlocks(text, node);
+			}
 		}
 
 		window.localStorage.setItem('impulse:map', JSON.stringify(map));
+		window.localStorage.setItem('impulse:templates', JSON.stringify(templates));
 	}
 }
 
@@ -629,38 +649,33 @@ function HomePage (memo) {
 // [component, props, ...children], new fiber-based subcomponent. makes it easier to pass props without wrapping another function
 
 function processTemplate (pathname, layout, props) {
-	const { files, map } = state;
+	const { templates } = state;
 	const names = pathname.replace(/^\/+|\/+$/g, '').split('/');
 	const schemas = [];
+	const styles = '';
+	const resources = '';
 
 	for (let i = 1; i < names.length; i++) {
 		const pathname = `/${names.slice(0, -i).join('/')}`;
-		const node = map[pathname];
+		const template = templates[pathname];
 		
-		if (!node) {
+		if (!template) {
 			break;
 		}
 
-		const mainInfo = node?.['']?.['']?.[0] || '';
-		const [range] = mainInfo.split(' ');
-		const [, codeRange] = range.split(':');
-		const file = files[pathname];
+		const [schemaString, locals] = template;
+		const render = createFunction(locals, schemaString);
+		const schema = render();
+		schemas.push(schema);
 
-		if (!codeRange || !file) {
-			break;
-		}
-
-		const [start, finish] = codeRange.split('-');
-		// TODO: append other named functions and states before return statement
-		const renderer = new Function(`return (${file.slice(start, finish)})(...arguments)`);
-		
 		// TODO: get props from json file that is paired with md file
 		// - it should have all parent form data merged
-		layout = renderer({ ...props, '': layout });
+		layout = render({ ...props, '': layout });
 	}
 
+	// TODO: append CSS and resource tags from parent-most to direct parent template
 	// TODO: merge schemas into one
-	return [layout, ...schemas];
+	return [layout, schemas, styles, resources];
 }
 
 function Page (memo) {

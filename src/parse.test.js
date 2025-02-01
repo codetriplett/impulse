@@ -1,4 +1,5 @@
-const { parseJS, parseMD, findByType, mapNode, parse } = require('./parse');
+const { parseJS, parseMD, findByType, mapNode, extractBlocks, createFunction, parse } = require('./parse');
+const { updateNode } = require('./map');
 
 describe.skip('parseJS', () => {
 	it('parses default import', () => {
@@ -995,11 +996,15 @@ describe('mapNode', () => {
 	it('identifies template', () => {
 		const text =
 `\`\`\`
-...code
+...resources
+{
+	...schema
+}
+...styles
 \`\`\`
 # Header
 \`\`\`
-{ ...schema }
+...code
 \`\`\``;
 
 		const layout = parseMD(text);
@@ -1007,8 +1012,43 @@ describe('mapNode', () => {
 
 		expect(actual).toEqual({
 			'': {
-				'': '0-16:4-11',
-				'header0': '16-46:29-42 Header',
+				'': '0-46:4-41:17-31',
+				header0: '46-70:59-66 Header',
+			}
+		});
+	});
+
+	it('helpers in template', () => {
+		const text =
+`\`\`\`
+...resources
+{
+	...schema
+}
+...styles
+\`\`\`
+# Header
+\`\`\`
+...code
+\`\`\`
+## Named Helper {#name}
+\`\`\`
+...helper
+\`\`\`
+## Other Helper
+\`\`\`
+...example
+\`\`\``;
+
+		const layout = parseMD(text);
+		const actual = mapNode(layout, text.length);
+
+		expect(actual).toEqual({
+			'': {
+				'': '0-46:4-41:17-31 name',
+				header0: '46-71:59-66 Header',
+				header1: '113-147#header0 Other Helper',
+				name: '71-113:99-108#header0 Named Helper',
 			}
 		});
 	});
@@ -1147,6 +1187,113 @@ describe('mapNode', () => {
 // 			},
 // 		});
 // 	});
+});
+
+describe('createFunction', () => {
+	it('creates function', () => {
+		const actual = createFunction({
+			'': 'function (props) {\n\treturn props;\n}',
+		}, '{ key: \'value\' }');
+
+		expect(actual()).toEqual({ key: 'value' });
+		expect(actual({ abc: 123 })).toEqual({ abc: 123 });
+	});
+
+	it('includes helper', () => {
+		const actual = createFunction({
+			helper: 'function (props) {\n\treturn props.abc;\n}',
+			'': 'function (props) {\n\treturn helper(props);\n}',
+		}, '{ key: helper({ abc: \'value\' }) }');
+
+		expect(actual()).toEqual({ key: 'value' });
+		expect(actual({ abc: 123 })).toEqual(123);
+	});
+});
+
+describe('extractBlocks', () => {
+	it('ignores pages', () => {
+		const text =
+`# Header
+\`\`\`
+function (props) {
+	return props;
+}
+\`\`\``;
+
+		const layout = parseMD(text);
+		const node = mapNode(layout, text.length);
+		const actual = extractBlocks(text, node);
+		expect(actual).toEqual(undefined)
+	});
+
+	it('extracts blocks from template', () => {
+		const text =
+`\`\`\`
+/one
+/two
+{ key: 'value' }
+...styles
+\`\`\`
+# Header
+\`\`\`
+function (props) {
+	return props;
+}
+\`\`\``;
+
+		const path = '/root';
+		const map = {};
+		const layout = parseMD(text);
+		const relativeNode = mapNode(layout, text.length);
+		updateNode(map, path, relativeNode);
+		const node = map[path]
+		const actual = extractBlocks(text, node);
+
+		expect(actual).toEqual([
+			'{ key: \'value\' }',
+			{
+				'': 'function (props) {\n\treturn props;\n}',
+			},
+			'...styles',
+			'/one',
+			'/two',
+		]);
+	});
+
+	it('references named render', () => {
+		const text =
+`\`\`\`
+/one
+/two
+{ key: 'value' }
+...styles
+\`\`\`
+# Header {#render}
+\`\`\`
+function (props) {
+	return props;
+}
+\`\`\``;
+
+		const path = '/root';
+		const map = {};
+		const layout = parseMD(text);
+		const relativeNode = mapNode(layout, text.length);
+		updateNode(map, path, relativeNode);
+		const node = map[path]
+		const actual = extractBlocks(text, node);
+
+		expect(actual).toEqual([
+			'{ key: \'value\' }',
+			{
+				render: 'function (props) {\n\treturn props;\n}',
+				'': 'render',
+			},
+			'...styles',
+			'/one',
+			'/two',
+		]);
+	});
 });
 
 describe.skip('parse', () => {

@@ -437,7 +437,7 @@ export function mapNode (layout, prevStart) {
 		
 		const blockIndex = blocks.findLastIndex(block => block[1].key >= start);
 		const snipBlocks = blockIndex === -1 ? [] : blocks.splice(blockIndex);
-		snip.push(snipBlocks[0]);
+		snip.push(depth === 1 || idSet.has(heading) ? snipBlocks[0] : undefined);
 
 		const linkIndex = links.findLastIndex(link => link[1].key >= start);
 		const snipLinks = linkIndex === -1 ? [] : links.splice(linkIndex);
@@ -468,7 +468,17 @@ export function mapNode (layout, prevStart) {
 
 		stack.splice(0, stack.length - depth + 1, id);
 		const parent = stack[1];
-		const blockRange = rangeMap.get(block) || '';
+		let blockRange = rangeMap.get(block) || '';
+
+		if (blockRange && id === '') {
+			const value = block[2][2];
+			const blockStart = Number(blockRange.slice(1).split('-')[0]);
+			const schemaStart = value.indexOf('{');
+			// TODO: parse this properly instead of relying on it to have perfect formatting
+			const schemaFinish = value.indexOf('}\n', schemaStart);
+			blockRange += `:${blockStart + (schemaStart === -1 ? 0 : schemaStart)}-${blockStart + (schemaFinish === -1 ? value.length : schemaFinish + 1)}`;
+		}
+
 		const info = `${start}-${finish}${blockRange}${parent ? `#${parent}` : ''}${text ? ` ${text}` : ''}`;
 		locals[id] = info;
 
@@ -577,6 +587,70 @@ export function mapNode (layout, prevStart) {
 	// }
 
 	// return { ...imports, '': locals };
+}
+
+export function extractBlocks (text, node) {
+	const { '': locals } = node;
+	const exports = new Set(locals[''][0].split(' ').slice(1));
+	const localStrings = {};
+	let schemaString, styles, resources;
+
+	for (const [name, value] of Object.entries(locals)) {
+		const [info] = value[0].split(' ');
+		const [ranges, hash] = info.split('#');
+		const [, blockRange, schemaRange] = ranges.split(':');
+
+		if (!blockRange) {
+			continue;
+		}
+
+		const [blockStart, blockFinish] = blockRange.split('-');
+		
+		if (schemaRange) {
+			const [schemaStart, schemaFinish] = schemaRange.split('-');
+			schemaString = text.slice(schemaStart, schemaFinish);
+	
+			const resourceString = text.slice(blockStart, schemaStart).trim();
+			resources = resourceString ? resourceString.split(/\s+/) : [];
+			styles = text.slice(schemaFinish, blockFinish).trim();
+			continue;
+		}
+
+		const block = text.slice(blockStart, blockFinish).trim();
+		
+		if (/[a-z_]\w*/i.test(name)) {
+			if (exports.has(name)) {
+				localStrings[name] = block;
+			}
+			
+			if (hash === undefined && !localStrings['']) {
+				localStrings[''] = exports.has(name) ? name : block;
+			}
+		}
+	}
+
+	if (schemaString === undefined) {
+		return;
+	}
+
+	return [schemaString, localStrings, styles, ...resources];
+}
+
+export function createFunction (locals, schema) {
+	let code;
+
+	if (typeof locals === 'string') {
+		code = `return(${locals})`;
+	} else {
+		const { '': main, ...rest } = locals;
+
+		code = Object.entries(rest)
+			.map(([name, value]) => `const ${name}=${value}`)
+			.concat(`return arguments.length?(${main})(...arguments):(${schema})`)
+			.join(';');
+	}
+
+	return new Function(code);
 }
 
 // TODO: allow override parse and render functions when running the CLI command
