@@ -1,0 +1,1 @@
+window.greeting = 'Hello World!';

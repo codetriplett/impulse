@@ -147,6 +147,7 @@ body {
     font-weight: bold;
 }
 .main .expand-left {
+	display: none;
     left: 10px;
 	font-size: 26px;
 	line-height: 26px;
@@ -159,6 +160,12 @@ body {
 .snips .close {
     right: 10px;
     font-size: 17px;
+}
+
+.main .expand-left.toggle-off,
+.navigation + .main .expand-left,
+.edit + .main .expand-left {
+	display: block;
 }
 
 .template,

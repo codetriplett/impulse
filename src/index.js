@@ -24,21 +24,38 @@ export const state = createState({
 	isTemplateFocused: false,
 	isChanged: false,
 	draft: null,
-	draftTemplate: null,
 	draftProps: null,
 });
 
 function updateFile (path, text, type) {
-	if (type !== 'md') {
-		return;
+	switch (type) {
+		default: {
+			return;
+		}
+		case 'json': {
+			files[path] = text;
+			return;
+		}
+		case 'md': {
+			break;
+		}
 	}
 
 	const { files, map, templates } = state;
-	const node = parse(text, 'md');
-	const template = extractBlocks(text, node);
-	updateNode(map, path, node);
+	const relativeNode = parse(text, 'md');
+	updateNode(map, path, relativeNode);
 	files[path] = text;
-	templates[path] = template;
+	
+	const node = map[path];
+	const template = extractBlocks(text, node);
+	// TODO: don't preprocess templates, just process them on the fly with file and node
+	// - less likely to get out of sync
+
+	if (template) {
+		templates[path] = template;
+	} else {
+		delete templates[path];
+	}
 }
 
 export function recallSession () {
@@ -86,7 +103,11 @@ export function recallSession () {
 
 			if (!templates[path]) {
 				const node = map[path];
-				templates[path] = extractBlocks(text, node);
+				const template = extractBlocks(text, node);
+
+				if (template) {
+					templates[path] = template;
+				}
 			}
 		}
 
@@ -96,10 +117,11 @@ export function recallSession () {
 }
 
 export function storeSession () {
-	const { files, map, snips } = state;
+	const { files, map, templates, snips } = state;
 	window.localStorage.removeItem('impulse:map'); // in case the localStorage limit is reached
 	window.localStorage.setItem('impulse:files', JSON.stringify(files));
 	window.localStorage.setItem('impulse:map', JSON.stringify(map));
+	window.localStorage.setItem('impulse:templates', JSON.stringify(templates));
 	window.localStorage.setItem('impulse:snips', JSON.stringify(snips));
 }
 
@@ -108,7 +130,7 @@ export function storeSession () {
 //   - have a final option at the end for citations (imports)
 //     - expand to show headlines for imports in the order they were first used
 // - for JS: show just the citations without having to expand
-function getCitations (path, registry, focusedNames) {
+function getCitations (path, manifest, focusedNames) {
 	const { map } = state;
 	const node = map[path];
 
@@ -143,11 +165,11 @@ function getCitations (path, registry, focusedNames) {
 	for (const childEntry of childEntries) {
 		const [start, finish, parent, name, heading] = childEntry;
 		const hashPath = `${path}#${name}`;
-		let child = registry[hashPath];
+		let child = manifest[hashPath];
 
 		if (!child) {
 			child = {};
-			registry[hashPath] = child;
+			manifest[hashPath] = child;
 		}
 
 		citations.push(child);
@@ -174,7 +196,7 @@ function getCitations (path, registry, focusedNames) {
 				return object[importName].indexOf(name) !== -1;
 			});
 
-			const newCitations = getCitations(path, registry, names);
+			const newCitations = getCitations(path, manifest, names);
 			childCitations.push(...newCitations);
 		}
 
@@ -184,7 +206,7 @@ function getCitations (path, registry, focusedNames) {
 
 		if (name) {
 			const parentHashPath = `${path}#${parent || ''}`;
-			const node = getObject(registry, parentHashPath, {});
+			const node = getObject(manifest, parentHashPath, {});
 			const children = getObject(node, 'children', [])
 			children.push(child);
 		}
@@ -327,24 +349,37 @@ function scopeLayout (layout, start, finish) {
 	layout.push(...children);
 }
 
-function renderCitation (hashPath, manifest) {
+function renderCitation (hashPath) {
 	const { snips } = state;
 	const isActive = allCitations.some(citation => hashPath === citation.path);
 
 	return memo => {
-		const [path] = hashPath.split('#');
+		const [path, hash] = hashPath.split('#');
 
 		if (hashPath !== memo[0]) {
-			const { files } = state;
-			const { start, finish } = manifest[hashPath];
-			const file = files[path];
-			const layout = parseMD(file);
-			scopeLayout(layout, start, finish);
+			const { files, map } = state;
+			const { '': locals = [] } = map[path] || {};
+			const local = locals[hash];
 			memo[0] = hashPath;
-			memo[1] = layout
+
+			if (!local) {
+				memo[1] = undefined;
+			} else {
+				const [info] = local;
+				const [range] = info.split(/[:# ]/);
+				const [start, finish] = range.split('-');
+				const file = files[path];
+				const layout = parseMD(file);
+				scopeLayout(layout, start, finish);
+				memo[1] = layout;
+			}
 		}
 
-		const [layout] = memo.slice(1);
+		const layout = memo[1];
+
+		if (!layout) {
+			return null;
+		}
 
 		return ['div', { className: `snip ${isActive ? '' : 'snip-inactive'}` },
 			['button', {
@@ -384,6 +419,10 @@ function renderLeftMenu (manifest, ...hashPaths) {
 	}).flat()).values().filter(node => {
 		return !node.path.startsWith(rootPath);
 	});
+
+	if (!children.length && !allCitations.lenth) {
+		return null;
+	}
 
 	return memo => {
 		const { snips } = state;
@@ -527,7 +566,6 @@ function resizeTextarea (ref) {
 	textarea.style.height = `${scrollHeight}px`;
 }
 
-const templateRef = [];
 const editRef = [];
 
 // TODO: save template to JS file
@@ -538,46 +576,23 @@ const editRef = [];
 // - set stew extention to allow webGL shaders (e.g. ['canvas', { width, height }, shader`...`, shader`...`])
 
 function EditingPanel (memo) {
-	const { files, isTemplateFocused } = state;
+	const { files, schema } = state;
 	const { pathname } = window.location;
 	const file = files[pathname] || '';
-	const templateFile = files[`${pathname}.js`] || '';
 	
 	onRender(() => {
-		if (isTemplateFocused) {
-			resizeTextarea(templateRef);
-		}
-
 		resizeTextarea(editRef);
 	});
+
+	// TODO: render form from schema
+	// - fill with current props, then save back to json file on save
+	console.log(schema);
 
 	return ['div', {
 		key: 'edit',
 		className: 'edit',
 	},
-		['textarea', {
-			className: `template ${isTemplateFocused ? 'template-focused' : ''}`,
-			placeholder: '(default)', // TODO: put path of parent here
-			ref: templateRef,
-			onfocus: () => {
-				resizeTextarea(templateRef);
-				state.isTemplateFocused = true;
-			},
-			onblur: () => {
-				const [textarea] = templateRef;
-				textarea.style.height = null;
-				state.isTemplateFocused = false;
-			},
-			onkeydown: () => {
-				resizeTextarea(templateRef);
-				state.isChanged = true;
-			},
-			onkeyup: () => {
-				resizeTextarea(templateRef);
-				state.isChanged = true;
-			},
-		}, templateFile],
-		!isTemplateFocused && ['div', {
+		['div', {
 			className: 'form',
 		}, 'PUT FORM HERE'],
 		['textarea', {
@@ -649,33 +664,45 @@ function HomePage (memo) {
 // [component, props, ...children], new fiber-based subcomponent. makes it easier to pass props without wrapping another function
 
 function processTemplate (pathname, layout, props) {
-	const { templates } = state;
+	const { files, templates } = state;
 	const names = pathname.replace(/^\/+|\/+$/g, '').split('/');
-	const schemas = [];
-	const styles = '';
-	const resources = '';
+	const allResources = [];
+	let allStyles = '';
+	let schema;
 
-	for (let i = 1; i < names.length; i++) {
-		const pathname = `/${names.slice(0, -i).join('/')}`;
+	for (let i = names.length; i > 0; i--) {
+		const pathname = `/${names.slice(0, i).join('/')}`;
 		const template = templates[pathname];
-		
+
 		if (!template) {
-			break;
+			if (i === names.length) {
+				continue;
+			} else {
+				break;
+			}
+		}
+		
+		const [schemaString, locals, styles, ...resources] = template;
+		allStyles = `${styles}\n${allStyles}`;
+		allResources.unshift(...resources);
+
+		if (i === names.length) {
+			continue;
 		}
 
-		const [schemaString, locals] = template;
-		const render = createFunction(locals, schemaString);
-		const schema = render();
-		schemas.push(schema);
+		if (!props) {
+			props = files[`${pathname}.json`] || {};
+		}
 
-		// TODO: get props from json file that is paired with md file
-		// - it should have all parent form data merged
+		const render = createFunction(locals, schemaString);
 		layout = render({ ...props, '': layout });
+
+		if (i === names.length - 1) {
+			schema = render();
+		}
 	}
 
-	// TODO: append CSS and resource tags from parent-most to direct parent template
-	// TODO: merge schemas into one
-	return [layout, schemas, styles, resources];
+	return [layout, schema, allStyles, ...allResources];
 }
 
 function Page (memo) {
@@ -691,9 +718,10 @@ function Page (memo) {
 
 		if (content !== prevContent) {
 			const contentLayout = parseMD(content);
-			const [layout, ...schemas] = processTemplate(pathname, contentLayout, {});
+			const [layout, schema, styles, ...resources] = processTemplate(pathname, contentLayout, {});
 			memo[2] = layout;
-			memo[3] = schemas;
+			const cssUrls = resources.filter(url => url.endsWith('.css'));
+			const jsUrls = resources.filter(url => url.endsWith('.js'));
 
 			onRender(() => {
 				const [main] = ref;
@@ -701,24 +729,62 @@ function Page (memo) {
 
 				if (!shadowRoot) {
 					const style = document.querySelector('#styles');
-					const stylesheet = new CSSStyleSheet();
-					stylesheet.replaceSync(style.innerText);
+					const baseStylesheet = new CSSStyleSheet();
+					baseStylesheet.replaceSync(style.innerText);
+					
+					const templateStylesheet = new CSSStyleSheet();
+					templateStylesheet.replaceSync(styles);
+
 					shadowRoot = main.attachShadow({ mode: 'open' });
-					shadowRoot.adoptedStyleSheets = [stylesheet];
+					shadowRoot.adoptedStyleSheets = [baseStylesheet, templateStylesheet];
+					state.schema = schema;
 				}
 
 				const layout = memo[2];
-				window.stew(shadowRoot, layout);
+				
+
+				Promise.all(cssUrls.map(href => {
+					return new Promise(resolve => {
+						const link = document.createElement('link');
+						link.onload = resolve;
+						link.rel = 'stylesheet';
+						link.href = href;
+						shadowRoot.appendChild(link);
+					});
+				})).then(() => {
+					// TODO: get stew to work fully with shadowRoot (it needs to call attachShadow with the desired mode)
+					// - not using it that way here since it needs to wait for css to load and I didn't want to add state
+					// window.stew(shadowRoot, layout);
+
+					const fragment = window.stew('', layout);
+					shadowRoot.appendChild(fragment);
+					
+					// module script tags don't seem to respect order when inserted after page load
+					// - this won't be a problem when we move to server render these
+					// - may need to keep this for when changes are being previewed though while editing
+					// - could maybe add preloads of all of them at once and then adds tags in sequence, if we wanted to get fancy
+					jsUrls.reduce((promise, src) => {
+						return promise.then(() => {
+							return new Promise(resolve => {
+								const script = document.createElement('script');
+								script.onload = resolve;
+								script.src = src;
+								shadowRoot.appendChild(script);
+							});
+						});
+					}, Promise.resolve());
+				});
 			});
 		}
 
 		const manifest = {};
-		memo[4] = manifest;
+		memo[3] = manifest;
 		getCitations(pathname, manifest);
 		// getMentions(pathname, citations);
 	}
 
-	const [schemas, manifest] = memo.slice(3);
+	const leftButtonClassName = `expand-left ${!isLeftNavExpanded ? 'toggle-off' : ''}`;
+	const [manifest] = memo.slice(3);
 	headerIndex = 0;
 
 	// TODO: render form using schema
@@ -739,27 +805,25 @@ function Page (memo) {
 		},
 			!isEditing
 				? ['button', {
-					className: 'expand-left',
+					className: leftButtonClassName,
 					onclick: () => {
 						state.isLeftNavExpanded = !isLeftNavExpanded;
 					},
 				}, '≡']
 				: isChanged
 					? ['button', {
-						className: 'expand-left',
+						className: leftButtonClassName,
 						onclick: () => {
 							const [editInput] = editRef;
-							const [templateInput] = templateRef;
 							
 							Object.assign(state, {
 								draft: editInput.value === files[pathname] ? null : editInput.value,
-								draftTemplate: templateInput.value === files[`${pathname}.js`] ? null : templateInput.value,
 								isChanged: false,
 							});
 						},
 					}, '👁']
 					: ['button', {
-						className: 'expand-left',
+						className: leftButtonClassName,
 						onclick: () => {
 							const [editInput] = editRef;
 							const text = editInput.value;
@@ -792,7 +856,7 @@ function Page (memo) {
 							state.isEditing = false;
 						},
 					}, '✕'],
-			['main', { ref },
+			['div', { ref },
 				// server render with this property, and make sure stew sets it properly
 				// have stew handle hydration and updates properly with shadowrootmode set to open
 				// ['template', { shadowrootmode: 'open' }, layout],

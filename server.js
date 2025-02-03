@@ -19,6 +19,12 @@ const resources = {
 	'acorn-jsx-xhtml.min.js': 'node_modules/acorn-jsx/xhtml.js',
 	'stew.min.js': 'node_modules/@triplett/stew/dist/stew.min.js',
 	'stew.min.js.LEGAL.txt': 'node_modules/@triplett/stew/dist/stew.min.js.LEGAL.txt',
+
+	// TODO: remove these once we open it up to allow any resource path in the folder server.js ran inside of
+	'site.css': 'src/static/site.css',
+	'site.js': 'src/static/site.js',
+	'category.css': 'src/static/category.css',
+	'category.js': 'src/static/category.js',
 };
 
 function send (res, content, type = types.txt) {
