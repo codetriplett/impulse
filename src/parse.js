@@ -475,7 +475,7 @@ export function mapNode (layout, prevStart) {
 			const blockStart = Number(blockRange.slice(1).split('-')[0]);
 			const schemaStart = value.indexOf('{');
 			// TODO: parse this properly instead of relying on it to have perfect formatting
-			const schemaFinish = value.indexOf('}\n', schemaStart);
+			const schemaFinish = value.search(/\}\r?\n/, schemaStart);
 			blockRange += `:${blockStart + (schemaStart === -1 ? 0 : schemaStart)}-${blockStart + (schemaFinish === -1 ? value.length : schemaFinish + 1)}`;
 		}
 
@@ -589,6 +589,22 @@ export function mapNode (layout, prevStart) {
 	// return { ...imports, '': locals };
 }
 
+export function extractTemplate () {
+	// TODO: extract styles to css file, and rest to mjs file
+	// - default export is of form [render, schema, ...resources]
+	// - use es module imports if md file has definitions to other mjs files
+	//   - consolidate into one import per file, with hashes destructured (use label of md defintion as name for import)
+
+	/*
+
+	import { ...imports } from '/remote.mjs'
+	export const helper = function () { ...code }
+	export const site = function () { ...code }
+	export default [site, { ...schema }, ...resources]
+
+	*/
+}
+
 export function extractBlocks (text, node) {
 	const { '': locals } = node;
 	const exports = new Set(locals[''][0].split(' ').slice(1));
@@ -634,23 +650,6 @@ export function extractBlocks (text, node) {
 	}
 
 	return [schemaString, localStrings, styles, ...resources];
-}
-
-export function createFunction (locals, schema) {
-	let code;
-
-	if (typeof locals === 'string') {
-		code = `return(${locals})`;
-	} else {
-		const { '': main, ...rest } = locals;
-
-		code = Object.entries(rest)
-			.map(([name, value]) => `const ${name}=${value}`)
-			.concat(`return arguments.length?(${main})(...arguments):(${schema})`)
-			.join(';');
-	}
-
-	return new Function(code);
 }
 
 // TODO: allow override parse and render functions when running the CLI command

@@ -5,7 +5,10 @@ const port = 8080;
 const types = {
 	html: 'text/html',
 	css: 'text/css',
-	js: 'application/javascript',
+	mjs: 'text/javascript',
+	js: 'text/javascript',
+	json: 'application/json',
+	md: 'text/plain',
 	ico: 'image/x-icon'
 };
 
@@ -19,12 +22,6 @@ const resources = {
 	'acorn-jsx-xhtml.min.js': 'node_modules/acorn-jsx/xhtml.js',
 	'stew.min.js': 'node_modules/@triplett/stew/dist/stew.min.js',
 	'stew.min.js.LEGAL.txt': 'node_modules/@triplett/stew/dist/stew.min.js.LEGAL.txt',
-
-	// TODO: remove these once we open it up to allow any resource path in the folder server.js ran inside of
-	'site.css': 'src/static/site.css',
-	'site.js': 'src/static/site.js',
-	'category.css': 'src/static/category.css',
-	'category.js': 'src/static/category.js',
 };
 
 function send (res, content, type = types.txt) {
@@ -44,25 +41,22 @@ function send (res, content, type = types.txt) {
 	res.end(content);
 }
 
-createServer(({ url, method }, res) => {
-	const regex = /^(?:\/+)?(.*?)(?:\.([^/.?#]*)|\/*)?(?:\?(.*?))?$/;
-	let [, path = '', extension] = url.match(regex);
+const regex = /^(?:\/+)?(.*?(?:\.([^/.?#]*)|\/*)?)(?:\?(.*?))?$/;
 
-	if (!extension) {
-		path = 'index';
+createServer(({ url, method }, res) => {
+	let [, path = '', extension, query] = url.match(regex);
+
+	if (extension) {
+		path = resources[path] || `src/static/${path}`;
+	} else {
+		path = 'src/index.html';
 		extension = 'html';
 	}
 
 	const type = types[extension];
 	const options = !/^image\/(?!svg)/.test(type) ? ['utf8'] : [];
-	path += `.${extension}`;
-	const resourcePath = resources[path];
 
-	if (!resourcePath) {
-		return send(res);
-	}
-
-	readFile(`${__dirname}/${resourcePath}`, ...options, (err, content) => {
+	readFile(`${__dirname}/${path}`, ...options, (err, content) => {
 		send(res, content, type);
 	});
 }).listen(port, err => console.log(`server is listening on ${port}`));

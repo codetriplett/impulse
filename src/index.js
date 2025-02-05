@@ -5,7 +5,7 @@
 import { parse } from './parse';
 import { updateNode } from './map';
 import { getObject } from './common';
-import { parseMD, extractBlocks, createFunction } from './parse';
+import { parseMD, extractBlocks } from './parse';
 import { createState, onRender } from '@triplett/stew';
 
 const { pathname, hash } = window.location;
@@ -58,13 +58,21 @@ function updateFile (path, text, type) {
 	}
 }
 
-export function recallSession () {
+const defaultFilePaths = [
+	'/site.md',
+	'/site/category.md',
+	'/site/category.json',
+	'/site/category/page.md',
+	'/site/category/page.json',
+];
+
+export async function recallSession () {
 	let files, map, templates, snips, settings;
 
 	try {
-		files = JSON.parse(window.localStorage.getItem('impulse:files') || '{}');
-		map = JSON.parse(window.localStorage.getItem('impulse:map'));
-		templates = JSON.parse(window.localStorage.getItem('impulse:templates'));
+		// files = JSON.parse(window.localStorage.getItem('impulse:files'));
+		// map = JSON.parse(window.localStorage.getItem('impulse:map'));
+		// templates = JSON.parse(window.localStorage.getItem('impulse:templates'));
 		snips = JSON.parse(window.localStorage.getItem('impulse:snips') || '[]');
 		settings = JSON.parse(window.localStorage.getItem('impulse:settings') || '{}');
 	} catch (err) {
@@ -73,12 +81,27 @@ export function recallSession () {
 		window.localStorage.removeItem('impulse:templates');
 		window.localStorage.removeItem('impulse:snips');
 		window.localStorage.removeItem('impulse:settings');
-		files = {};
 		snips = [];
 		settings = {};
 	}
 
 	Object.assign(state, { files, map, templates, snips, settings });
+
+	// TODO: only store changes to local storage
+	// - add helper that will attempt to fetch file from server if not found in local storage
+	// - add an option to create a backup of the localStorage files (in a folder and file structure)
+	// - store in localStorage with .md and .json extensions
+	if (!files) {
+		files = {};
+		Object.assign(state, { files, map: {}, templates: {} });
+
+		await Promise.all(defaultFilePaths.map(async path => {
+			const file = await fetch(path).then(res => res.text());
+			files[path.replace(/\.md$/, '')] = file;
+		}));
+
+		window.localStorage.setItem('impulse:files', JSON.stringify(files));
+	}
 
 	if (!map || !templates) {
 		if (!map) {
@@ -575,6 +598,10 @@ const editRef = [];
 //   - hydrate will also receive container element
 // - set stew extention to allow webGL shaders (e.g. ['canvas', { width, height }, shader`...`, shader`...`])
 
+
+// TODO: read .md and .json files from server if they are not found in local storage
+// - only store files in local storage when saved while on nerve.dev
+// - put options on home page to backup local storage files to zip file, or restore its content from a zip file
 function EditingPanel (memo) {
 	const { files, schema } = state;
 	const { pathname } = window.location;
@@ -663,46 +690,31 @@ function HomePage (memo) {
 // () => {}: custom processer, runs only on server render and on hydrate (with element passed in), or just once client-size if it wasn't server rendered
 // [component, props, ...children], new fiber-based subcomponent. makes it easier to pass props without wrapping another function
 
-function processTemplate (pathname, layout, props) {
-	const { files, templates } = state;
+async function processTemplate (pathname, layout) {
 	const names = pathname.replace(/^\/+|\/+$/g, '').split('/');
 	const allResources = [];
-	let allStyles = '';
-	let schema;
+	const promises = [];
 
-	for (let i = names.length; i > 0; i--) {
+	for (let i = names.length - 1; i > 0; i--) {
 		const pathname = `/${names.slice(0, i).join('/')}`;
-		const template = templates[pathname];
 
-		if (!template) {
-			if (i === names.length) {
-				continue;
-			} else {
-				break;
-			}
-		}
-		
-		const [schemaString, locals, styles, ...resources] = template;
-		allStyles = `${styles}\n${allStyles}`;
-		allResources.unshift(...resources);
-
-		if (i === names.length) {
-			continue;
-		}
-
-		if (!props) {
-			props = files[`${pathname}.json`] || {};
-		}
-
-		const render = createFunction(locals, schemaString);
-		layout = render({ ...props, '': layout });
-
-		if (i === names.length - 1) {
-			schema = render();
-		}
+		promises.push(
+			import(`${pathname}.mjs`),
+			i > 1 ? fetch(`${pathname}.json`).then(res => res.json()) : undefined,
+		);
 	}
 
-	return [layout, schema, allStyles, ...allResources];
+	const modules = await Promise.all(promises);
+
+	for (let i = 0; i < modules.length; i += 2) {
+		const [module, props] = modules.slice(i, i + 2);
+		const [render,, ...resources] = module.default;
+		layout = render({ ...props, '': layout });
+		allResources.unshift(...resources);
+	}
+
+	const schema = modules[0]?.default?.[1];
+	return [layout, schema, ...allResources];
 }
 
 function Page (memo) {
@@ -718,12 +730,10 @@ function Page (memo) {
 
 		if (content !== prevContent) {
 			const contentLayout = parseMD(content);
-			const [layout, schema, styles, ...resources] = processTemplate(pathname, contentLayout, {});
-			memo[2] = layout;
-			const cssUrls = resources.filter(url => url.endsWith('.css'));
-			const jsUrls = resources.filter(url => url.endsWith('.js'));
-
-			onRender(() => {
+			
+			processTemplate(pathname, contentLayout).then(([layout, schema, ...resources]) => {
+				const cssUrls = resources.filter(url => url.endsWith('.css'));
+				const jsUrls = resources.filter(url => /\.m?js$/.test(url));
 				const [main] = ref;
 				let { shadowRoot } = main;
 
@@ -731,17 +741,11 @@ function Page (memo) {
 					const style = document.querySelector('#styles');
 					const baseStylesheet = new CSSStyleSheet();
 					baseStylesheet.replaceSync(style.innerText);
-					
-					const templateStylesheet = new CSSStyleSheet();
-					templateStylesheet.replaceSync(styles);
 
 					shadowRoot = main.attachShadow({ mode: 'open' });
-					shadowRoot.adoptedStyleSheets = [baseStylesheet, templateStylesheet];
+					shadowRoot.adoptedStyleSheets = [baseStylesheet];
 					state.schema = schema;
 				}
-
-				const layout = memo[2];
-				
 
 				Promise.all(cssUrls.map(href => {
 					return new Promise(resolve => {
@@ -768,6 +772,11 @@ function Page (memo) {
 							return new Promise(resolve => {
 								const script = document.createElement('script');
 								script.onload = resolve;
+
+								if (src.endsWith('.mjs')) {
+									script.type = 'module';
+								}
+
 								script.src = src;
 								shadowRoot.appendChild(script);
 							});
@@ -778,13 +787,13 @@ function Page (memo) {
 		}
 
 		const manifest = {};
-		memo[3] = manifest;
+		memo[2] = manifest;
 		getCitations(pathname, manifest);
 		// getMentions(pathname, citations);
 	}
 
 	const leftButtonClassName = `expand-left ${!isLeftNavExpanded ? 'toggle-off' : ''}`;
-	const [manifest] = memo.slice(3);
+	const [manifest] = memo.slice(2);
 	headerIndex = 0;
 
 	// TODO: render form using schema
@@ -867,32 +876,33 @@ function Page (memo) {
 }
 
 if (typeof window !== 'undefined') {
-	recallSession();
-	const { theme = 'dark' } = state.settings;
-	const root = document.querySelector(':root');
-
-	switch (theme) {
-		case 'dark': {
-			root.style.setProperty('--page-background', '#333');
-			root.style.setProperty('--paper-background', '#222');
-			root.style.setProperty('--paper-shadow', '#111');
-			root.style.setProperty('--paper-font-color', '#ccc');
-			root.style.setProperty('--paper-inactive-background', '#333');
-			root.style.setProperty('--button-background', '#444');
-			root.style.setProperty('--button-border-color', '#555');
-			root.style.setProperty('--button-font-color', '#777');
-			root.style.setProperty('--button-hover-background', '#555');
-			root.style.setProperty('--button-hover-border-color', '#666');
-			root.style.setProperty('--button-hover-font-color', '#777');
-			root.style.setProperty('--navigation-font-color', '#ccc');
-			root.style.setProperty('--reference-font-color', '#999');
-			root.style.setProperty('--reference-active-background', '#555');
-			root.style.setProperty('--divider-color', '#777');
-			root.style.setProperty('--link-font-color', '#4b4bde');
-			root.style.setProperty('--link-visited-font-color', '#8d54c1');
-			break;
+	recallSession().then(() => {
+		const { theme = 'dark' } = state.settings;
+		const root = document.querySelector(':root');
+	
+		switch (theme) {
+			case 'dark': {
+				root.style.setProperty('--page-background', '#333');
+				root.style.setProperty('--paper-background', '#222');
+				root.style.setProperty('--paper-shadow', '#111');
+				root.style.setProperty('--paper-font-color', '#ccc');
+				root.style.setProperty('--paper-inactive-background', '#333');
+				root.style.setProperty('--button-background', '#444');
+				root.style.setProperty('--button-border-color', '#555');
+				root.style.setProperty('--button-font-color', '#777');
+				root.style.setProperty('--button-hover-background', '#555');
+				root.style.setProperty('--button-hover-border-color', '#666');
+				root.style.setProperty('--button-hover-font-color', '#777');
+				root.style.setProperty('--navigation-font-color', '#ccc');
+				root.style.setProperty('--reference-font-color', '#999');
+				root.style.setProperty('--reference-active-background', '#555');
+				root.style.setProperty('--divider-color', '#777');
+				root.style.setProperty('--link-font-color', '#4b4bde');
+				root.style.setProperty('--link-visited-font-color', '#8d54c1');
+				break;
+			}
 		}
-	}
 
-	stew('#app', pathname === '/' ? HomePage : Page);
+		stew('#app', pathname === '/' ? HomePage : Page);
+	});
 }
