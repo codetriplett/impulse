@@ -3,7 +3,13 @@ export const category = function ({ page, '': content }) {
 		['div', { className: 'navigation' }, `${page} Nav`],
 		['div', null, content],
 	];
-}
+};
 export default [category, {
 	page: '(\w*) Page',
-}, '/site/category.css']
+}, `.category {
+	display: flex;
+}
+.navigation {
+	flex: 0 0 120px;
+	background: lightgray;
+}`];

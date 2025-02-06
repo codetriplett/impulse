@@ -418,12 +418,25 @@ function getText (element) {
 // - have key prop store range string 'start-finish'
 // - have id prop store id for headings
 // - have definitions prop of root fragment store definition data (label: url)
-export function mapNode (layout, prevStart) {
+export function mapNode (layout, prevStart, vars) {
 	const children = layout.slice(2);
 	const headings = findByType(children, 'h');
 	const links = findByType(children, 'a');
 	const blocks = findByType(children, 'pre', 'code');
 	const snips = [];
+
+	if (vars) {
+		for (const link of links) {
+			const [, { href }, name = ''] = link;
+			const [path] = href.split('#');
+
+			if (!/\.m?js(#.*?)?$/.test(path) || !/^[a-z_]\w*$/i.test(name)) {
+				continue;
+			}
+
+			vars[name] = href;
+		}
+	}
 
 	for (let i = headings.length - 1; i >= 0; i--) {
 		const heading = headings[i];
@@ -435,12 +448,12 @@ export function mapNode (layout, prevStart) {
 		snips.unshift(snip);
 		prevStart = start;
 		
-		const blockIndex = blocks.findLastIndex(block => block[1].key >= start);
-		const snipBlocks = blockIndex === -1 ? [] : blocks.splice(blockIndex);
+		const blockIndex = blocks.findLastIndex(block => block[1].key < start);
+		const snipBlocks = blocks.splice(blockIndex === -1 ? 0 : blockIndex + 1);
 		snip.push(depth === 1 || idSet.has(heading) ? snipBlocks[0] : undefined);
 
-		const linkIndex = links.findLastIndex(link => link[1].key >= start);
-		const snipLinks = linkIndex === -1 ? [] : links.splice(linkIndex);
+		const linkIndex = links.findLastIndex(link => link[1].key < start);
+		const snipLinks = links.splice(linkIndex === -1 ? 0 : linkIndex + 1);
 		snip.push(...snipLinks);
 	}
 
@@ -589,7 +602,7 @@ export function mapNode (layout, prevStart) {
 	// return { ...imports, '': locals };
 }
 
-export function extractTemplate () {
+export function extractTemplate (text, node, vars = {}) {
 	// TODO: extract styles to css file, and rest to mjs file
 	// - default export is of form [render, schema, ...resources]
 	// - use es module imports if md file has definitions to other mjs files
@@ -603,6 +616,93 @@ export function extractTemplate () {
 	export default [site, { ...schema }, ...resources]
 
 	*/
+	const { '': locals } = node;
+	const exports = new Set(locals[''][0].split(' ').slice(1));
+	const definition = [undefined];
+	const lines = [];
+
+	for (const [name, value] of Object.entries(locals)) {
+		const [info] = value[0].split(' ');
+		const [ranges, hash] = info.split('#');
+		const [, blockRange, schemaRange] = ranges.split(':');
+
+		if (!blockRange) {
+			continue;
+		}
+
+		const [blockStart, blockFinish] = blockRange.split('-');
+		
+		if (schemaRange) {
+			const [schemaStart, schemaFinish] = schemaRange.split('-');
+			const resourceString = text.slice(blockStart, schemaStart).trim();
+			definition[1] = text.slice(schemaStart, schemaFinish);
+			definition[2] = `\`${text.slice(schemaFinish, blockFinish).trim().replaceAll('`', '\\`')}\``;
+
+			if (resourceString) {
+				definition.push(...resourceString.split(/\s+/).map(path => `'${path}'`));
+			}
+
+			continue;
+		}
+
+		let block = text.slice(blockStart, blockFinish).replace(/^\s+|(\s*;\s*|\s+)$/g, '');
+
+		if (block.startsWith('{')) {
+			block = `stew.createState({ ...state })`;
+		}
+		
+		if (/^[a-z_]\w*$/i.test(name)) {
+			if (exports.has(name)) {
+				lines.push(`export const ${name} = ${block}`);
+			}
+
+			if (hash === undefined && definition[0] === undefined) {
+				definition[0] = exports.has(name) ? name : block;
+			}
+		}
+	}
+
+	if (!definition[1]) {
+		return;
+	}
+
+	const imports = {};
+
+	for (const [name, pathname] of Object.entries(vars).reverse()) {
+		if (!name) {
+			continue;
+		}
+
+		const [path, hash] = pathname.split('#');
+
+		if (hash === undefined) {
+			lines.unshift(`import * as ${name} from '${path}'`);
+			continue;
+		}
+
+		const object = getObject(imports, path, {});
+		const aliases = getObject(object, hash, []);
+		aliases.push(name);
+	}
+
+	for (const [path, object] of Object.entries(imports)) {
+		const parts = [];
+
+		for (const [name, aliases] of Object.entries(object)) {
+			for (const alias of aliases) {
+				if (alias === 'default') {
+					continue;
+				}
+
+				parts.unshift(alias === name ? name : `${name || 'default'} as ${alias}`);
+			}
+		}
+
+		lines.unshift(`import { ${parts.join(', ')} } from '${path}'`);
+	}
+
+	lines.push(`export default [${definition.join(', ')}];`);
+	return lines.join(';\n');
 }
 
 export function extractBlocks (text, node) {
@@ -634,7 +734,7 @@ export function extractBlocks (text, node) {
 
 		const block = text.slice(blockStart, blockFinish).trim();
 		
-		if (/[a-z_]\w*/i.test(name)) {
+		if (/^[a-z_]\w*$/i.test(name)) {
 			if (exports.has(name)) {
 				localStrings[name] = block;
 			}
@@ -655,14 +755,14 @@ export function extractBlocks (text, node) {
 // TODO: allow override parse and render functions when running the CLI command
 // - can put path to file that module.exports overrides after impulse command
 // - onParse and onRender can also be added to modify the default results from here
-export function parse (text, type) {
+export function parse (text, type, vars) {
 	switch (type) {
 		case 'js': {
 			return parseJS(text);
 		}
 		case 'md': {
 			const layout = parseMD(text);
-			return mapNode(layout, text.length);
+			return mapNode(layout, text.length, vars);
 		}
 	}
 }

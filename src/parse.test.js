@@ -1,4 +1,4 @@
-const { parseJS, parseMD, findByType, mapNode, extractBlocks, createFunction, parse } = require('./parse');
+const { parseJS, parseMD, findByType, mapNode, extractTemplate, extractBlocks, parse } = require('./parse');
 const { updateNode } = require('./map');
 
 describe.skip('parseJS', () => {
@@ -1053,6 +1053,46 @@ describe('mapNode', () => {
 		});
 	});
 
+	it('sets vars', () => {
+		const text =
+`[remote](/remote.mjs)
+\`\`\`
+...resources
+{
+	...schema
+}
+...styles
+\`\`\`
+# Header
+[main](/remote.mjs#default)
+\`\`\`
+...code
+\`\`\`
+[named](/remote.mjs#named)`;
+
+		const vars = {};
+		const layout = parseMD(text);
+		const actual = mapNode(layout, text.length, vars);
+
+		expect(actual).toEqual({
+			'/remote.mjs': {
+				'': [''],
+				default: ['header0'],
+				named: ['header0'],
+			},
+			'': {
+				'': '0-68:26-63:39-53',
+				header0: '68-147:109-116 Header',
+			}
+		});
+
+		expect(vars).toEqual({
+			main: '/remote.mjs#default',
+			named: '/remote.mjs#named',
+			remote: '/remote.mjs',
+		});
+	});
+
 
 
 
@@ -1189,24 +1229,179 @@ describe('mapNode', () => {
 // 	});
 });
 
-describe('createFunction', () => {
-	it('creates function', () => {
-		const actual = createFunction({
-			'': 'function (props) {\n\treturn props;\n}',
-		}, '{ key: \'value\' }');
+describe('extractTemplate', () => {
+	it('ignores pages', () => {
+		const text =
+`# Header
+\`\`\`
+function (props) {
+	return props;
+}
+\`\`\``;
 
-		expect(actual()).toEqual({ key: 'value' });
-		expect(actual({ abc: 123 })).toEqual({ abc: 123 });
+		const layout = parseMD(text);
+		const node = mapNode(layout, text.length);
+		const actual = extractTemplate(text, node);
+		expect(actual).toEqual(undefined)
 	});
 
-	it('includes helper', () => {
-		const actual = createFunction({
-			helper: 'function (props) {\n\treturn props.abc;\n}',
-			'': 'function (props) {\n\treturn helper(props);\n}',
-		}, '{ key: helper({ abc: \'value\' }) }');
+	it('extracts blocks from template', () => {
+		const text =
+`\`\`\`
+{ key: 'value' }
+\`\`\`
+# Header
+\`\`\`
+function (props) {
+	return props;
+}
+\`\`\``;
 
-		expect(actual()).toEqual({ key: 'value' });
-		expect(actual({ abc: 123 })).toEqual(123);
+		const path = '/root';
+		const map = {};
+		const layout = parseMD(text);
+		const relativeNode = mapNode(layout, text.length);
+		updateNode(map, path, relativeNode);
+		const node = map[path]
+		const actual = extractTemplate(text, node);
+
+		expect(actual).toEqual(
+`export default [function (props) {
+	return props;
+}, { key: 'value' }, ''];`
+		);
+	});
+
+	it('includes styles and resources', () => {
+		const text =
+`\`\`\`
+/one
+/two
+{ key: 'value' }
+...styles
+\`\`\`
+# Header
+\`\`\`
+function (props) {
+	return props;
+}
+\`\`\``;
+
+		const path = '/root';
+		const map = {};
+		const layout = parseMD(text);
+		const relativeNode = mapNode(layout, text.length);
+		updateNode(map, path, relativeNode);
+		const node = map[path]
+		const actual = extractTemplate(text, node);
+
+		expect(actual).toEqual(
+`export default [function (props) {
+	return props;
+}, { key: 'value' }, '...styles', '/one', '/two'];`
+		);
+	});
+
+	it('references named render', () => {
+		const text =
+`\`\`\`
+{ key: 'value' }
+\`\`\`
+# Header {#render}
+\`\`\`
+function (props) {
+	return props;
+}
+\`\`\``;
+
+		const path = '/root';
+		const map = {};
+		const layout = parseMD(text);
+		const relativeNode = mapNode(layout, text.length);
+		updateNode(map, path, relativeNode);
+		const node = map[path]
+		const actual = extractTemplate(text, node);
+
+		expect(actual).toEqual(
+`export const render = function (props) {
+	return props;
+};
+export default [render, { key: 'value' }, ''];`
+		);
+	});
+
+	it('includes helpers and states', () => {
+		const text =
+`\`\`\`
+{ key: 'value' }
+\`\`\`
+# Header
+\`\`\`
+function (props) {
+	return props;
+};
+\`\`\`
+## Helper {#helper}
+\`\`\`
+function () {
+	return;
+}
+\`\`\`
+## State {#state}
+\`\`\`
+{ ...state }
+\`\`\``;
+
+		const path = '/root';
+		const map = {};
+		const layout = parseMD(text);
+		const relativeNode = mapNode(layout, text.length);
+		updateNode(map, path, relativeNode);
+		const node = map[path]
+		const actual = extractTemplate(text, node);
+
+		expect(actual).toEqual(
+`export const helper = function () {
+	return;
+};
+export const state = stew.createState({ ...state });
+export default [function (props) {
+	return props;
+}, { key: 'value' }, ''];`
+		);
+	});
+
+	it('includes imports', () => {
+		const text =
+`[remote](/remote.mjs)
+[main](/remote.mjs#)
+[named](/remote.mjs#named)
+\`\`\`
+{ key: 'value' }
+\`\`\`
+# Header
+\`\`\`
+function (props) {
+	return props;
+}
+\`\`\``;
+
+		const path = '/root';
+		const vars = {};
+		const map = {};
+		const layout = parseMD(text);
+		const relativeNode = mapNode(layout, text.length, vars);
+		updateNode(map, path, relativeNode);
+		const node = map[path]
+		const actual = extractTemplate(text, node, vars);
+
+		expect(actual).toEqual(
+`import { default as main, named } from '/remote.mjs';
+import * as remote from '/remote.mjs;
+export default [function (props) {
+	return props;
+}, { key: 'value' }, ''];`
+		);
 	});
 });
 

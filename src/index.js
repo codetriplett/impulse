@@ -5,7 +5,7 @@
 import { parse } from './parse';
 import { updateNode } from './map';
 import { getObject } from './common';
-import { parseMD, extractBlocks } from './parse';
+import { parseMD, extractTemplate, extractBlocks } from './parse';
 import { createState, onRender } from '@triplett/stew';
 
 const { pathname, hash } = window.location;
@@ -27,6 +27,33 @@ export const state = createState({
 	draftProps: null,
 });
 
+async function fetchFile (path) {
+	const { files } = state;
+	const file = files[path];
+
+	if (!file) {
+		return fetch(path);
+	}
+
+	return {
+		text: () => file,
+		json: () => JSON.parse(file),
+	};
+}
+
+function importFile (path) {
+	const { files } = state;
+	const file = files[path];
+
+	if (!file) {
+		return import(path);
+	}
+
+	return import(URL.createObjectURL(
+		new Blob([file], { type: 'application/javascript' })
+	));
+}
+
 function updateFile (path, text, type) {
 	switch (type) {
 		default: {
@@ -41,20 +68,22 @@ function updateFile (path, text, type) {
 		}
 	}
 
-	const { files, map, templates } = state;
-	const relativeNode = parse(text, 'md');
+	const { files, map } = state;
+	const vars = {};
+	const relativeNode = parse(text, 'md', vars);
 	updateNode(map, path, relativeNode);
 	files[path] = text;
 	
 	const node = map[path];
-	const template = extractBlocks(text, node);
+	const codePath = `${path}.mjs`;
+	const template = extractTemplate(text, node, vars);
 	// TODO: don't preprocess templates, just process them on the fly with file and node
 	// - less likely to get out of sync
 
 	if (template) {
-		templates[path] = template;
+		files[codePath] = template;
 	} else {
-		delete templates[path];
+		delete files[codePath];
 	}
 }
 
@@ -70,8 +99,8 @@ export async function recallSession () {
 	let files, map, templates, snips, settings;
 
 	try {
-		// files = JSON.parse(window.localStorage.getItem('impulse:files'));
-		// map = JSON.parse(window.localStorage.getItem('impulse:map'));
+		files = JSON.parse(window.localStorage.getItem('impulse:files'));
+		map = JSON.parse(window.localStorage.getItem('impulse:map'));
 		// templates = JSON.parse(window.localStorage.getItem('impulse:templates'));
 		snips = JSON.parse(window.localStorage.getItem('impulse:snips') || '[]');
 		settings = JSON.parse(window.localStorage.getItem('impulse:settings') || '{}');
@@ -122,15 +151,6 @@ export async function recallSession () {
 
 			if (!map[path]) {
 				updateFile(path, text, 'md');
-			}
-
-			if (!templates[path]) {
-				const node = map[path];
-				const template = extractBlocks(text, node);
-
-				if (template) {
-					templates[path] = template;
-				}
 			}
 		}
 
@@ -691,30 +711,37 @@ function HomePage (memo) {
 // [component, props, ...children], new fiber-based subcomponent. makes it easier to pass props without wrapping another function
 
 async function processTemplate (pathname, layout) {
-	const names = pathname.replace(/^\/+|\/+$/g, '').split('/');
+	const names = pathname.slice(1).split('/');
 	const allResources = [];
-	const promises = [];
+	const promises = [fetchFile(`${pathname}.json`).then(res => res.json())];
+	let allStyles = '';
 
 	for (let i = names.length - 1; i > 0; i--) {
 		const pathname = `/${names.slice(0, i).join('/')}`;
+		promises.push(importFile(`${pathname}.mjs`));
 
-		promises.push(
-			import(`${pathname}.mjs`),
-			i > 1 ? fetch(`${pathname}.json`).then(res => res.json()) : undefined,
-		);
+		if (i > 1) {
+			promises.push(fetchFile(`${pathname}.json`).then(res => res.json()));
+		}
 	}
 
 	const modules = await Promise.all(promises);
 
-	for (let i = 0; i < modules.length; i += 2) {
-		const [module, props] = modules.slice(i, i + 2);
-		const [render,, ...resources] = module.default;
+	for (let i = 0; i < modules.length - 1; i += 2) {
+		const [props, module] = modules.slice(i, i + 2);
+
+		if (!module) {
+			break;
+		}
+
+		const [render,, styles, ...resources] = module.default;
 		layout = render({ ...props, '': layout });
+		allStyles = `${styles}\n${allStyles}`;
 		allResources.unshift(...resources);
 	}
 
 	const schema = modules[0]?.default?.[1];
-	return [layout, schema, ...allResources];
+	return [layout, schema, allStyles, ...allResources];
 }
 
 function Page (memo) {
@@ -731,7 +758,7 @@ function Page (memo) {
 		if (content !== prevContent) {
 			const contentLayout = parseMD(content);
 			
-			processTemplate(pathname, contentLayout).then(([layout, schema, ...resources]) => {
+			processTemplate(pathname, contentLayout).then(([layout, schema, styles, ...resources]) => {
 				const cssUrls = resources.filter(url => url.endsWith('.css'));
 				const jsUrls = resources.filter(url => /\.m?js$/.test(url));
 				const [main] = ref;
@@ -742,8 +769,12 @@ function Page (memo) {
 					const baseStylesheet = new CSSStyleSheet();
 					baseStylesheet.replaceSync(style.innerText);
 
+					const customStylesheet = new CSSStyleSheet();
+					customStylesheet.replaceSync(styles);
+					console.log(styles, resources);
+
 					shadowRoot = main.attachShadow({ mode: 'open' });
-					shadowRoot.adoptedStyleSheets = [baseStylesheet];
+					shadowRoot.adoptedStyleSheets = [baseStylesheet, customStylesheet];
 					state.schema = schema;
 				}
 

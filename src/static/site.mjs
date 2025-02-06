@@ -3,7 +3,11 @@ export const site = function ({ category, '': content }) {
 		['div', { className: 'header' }, `${category} Header`],
 		content,
 	];
-}
+};
 export default [site, {
 	category: '(\w*) Category',
-}, '/site.css']
+}, `.header {
+	height: 60px;
+	color: white;
+	background: dimgray;
+}`];

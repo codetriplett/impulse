@@ -1,6 +1,5 @@
 ```
 /site.mjs
-/site.css
 {
 	category: '(\w*) Category',
 }
