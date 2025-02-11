@@ -133,11 +133,11 @@ function renderFiles (tab, placement, paths, type, isBefore, activePath) {
 				const ref = fileRefs[fileIndex];
 
 				return memo => {
-					if (type !== 'main' && memo.length === 0) {
-						memo[0] = type === 'imports' ? focusImportFile(path, activePath) : focusExportFile(path, activePath);
+					if (type !== 'main' && memo.value === undefined) {
+						memo.value = type === 'imports' ? focusImportFile(path, activePath) : focusExportFile(path, activePath);
 					}
 
-					const value = type === 'main' ? files[path] : memo[0];
+					const value = type === 'main' ? files[path] : memo.value;
 
 					return ['div', { className: 'file-wrapper' },
 						type !== 'main' && ['div', { className: 'file-header' },

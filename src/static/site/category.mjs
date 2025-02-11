@@ -12,4 +12,4 @@ export default [category, {
 .navigation {
 	flex: 0 0 120px;
 	background: lightgray;
-}`];
+}`, '/site/other.css', '/site/other.mjs'];

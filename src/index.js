@@ -25,6 +25,7 @@ export const state = createState({
 	isChanged: false,
 	draft: null,
 	draftProps: null,
+	layout: null,
 });
 
 async function fetchFile (path) {
@@ -392,33 +393,33 @@ function scopeLayout (layout, start, finish) {
 	layout.push(...children);
 }
 
-function renderCitation (hashPath) {
+function Citation ({ hashPath }) {
 	const { snips } = state;
-	const isActive = allCitations.some(citation => hashPath === citation.path);
+	const isActive = allCitations.some(citation => citation.path === hashPath);
 
 	return memo => {
 		const [path, hash] = hashPath.split('#');
 
-		if (hashPath !== memo[0]) {
+		if (hashPath !== memo.hashPath) {
 			const { files, map } = state;
 			const { '': locals = [] } = map[path] || {};
 			const local = locals[hash];
-			memo[0] = hashPath;
+			let layout;
 
-			if (!local) {
-				memo[1] = undefined;
-			} else {
+			if (local) {
 				const [info] = local;
 				const [range] = info.split(/[:# ]/);
 				const [start, finish] = range.split('-');
 				const file = files[path];
 				const layout = parseMD(file);
 				scopeLayout(layout, start, finish);
-				memo[1] = layout;
 			}
+			
+			memo.hashPath = hashPath;
+			memo.layout = layout;
 		}
 
-		const layout = memo[1];
+		const { layout } = memo;
 
 		if (!layout) {
 			return null;
@@ -442,8 +443,10 @@ function renderCitation (hashPath) {
 
 let allCitations;
 
-function renderLeftMenu (manifest, ...hashPaths) {
-	const [pathname, hash = ''] = hashPaths[0].split('#');
+function LeftMenu ({ manifest, hashPath, snips }) {
+	snips = [...snips];
+
+	const [pathname, hash = ''] = hashPath.split('#');
 	const rootPath = `${pathname}#`;
 	let { children = [] } = manifest[rootPath] || {};
 
@@ -452,11 +455,11 @@ function renderLeftMenu (manifest, ...hashPaths) {
 		children = nestedChildren;
 
 		if (hash === '') {
-			hashPaths.splice(1, 0, `${pathname}#${name}`);
+			snips.splice(1, 0, `${pathname}#${name}`);
 		}
 	}
 
-	allCitations = new Set(hashPaths.map(hashPath => {
+	allCitations = new Set(snips.map(hashPath => {
 		const { citations = [] } = manifest[hashPath] || {};
 		return citations;
 	}).flat()).values().filter(node => {
@@ -506,7 +509,7 @@ function renderLeftMenu (manifest, ...hashPaths) {
 	};
 }
 
-function renderRightMenu (manifest) {
+function RightMenu () {
 	const { snips } = state;
 
 	if (!snips.length) {
@@ -516,7 +519,7 @@ function renderRightMenu (manifest) {
 	return ['ul', {
 		className: 'snips',
 	},
-		...snips.map(path => renderCitation(path, manifest)),
+		...snips.map(hashPath => [Citation, { hashPath }]),
 	];
 }
 
@@ -622,10 +625,10 @@ const editRef = [];
 // TODO: read .md and .json files from server if they are not found in local storage
 // - only store files in local storage when saved while on nerve.dev
 // - put options on home page to backup local storage files to zip file, or restore its content from a zip file
-function EditingPanel (memo) {
-	const { files, schema } = state;
+function EditingPanel ({ schema }) {
+	const { files, draft } = state;
 	const { pathname } = window.location;
-	const file = files[pathname] || '';
+	const file = draft || files[pathname] || '';
 	
 	onRender(() => {
 		resizeTextarea(editRef);
@@ -740,20 +743,19 @@ async function processTemplate (pathname, layout) {
 		allResources.unshift(...resources);
 	}
 
-	const schema = modules[0]?.default?.[1];
+	const schema = modules[1]?.default?.[1];
 	return [layout, schema, allStyles, ...allResources];
 }
 
 function Page (memo) {
-	const { files, hash, draft, isLeftNavExpanded, isChanged, isEditing, snips } = state;
-	const [prevContent, prevHash] = memo;
+	const { files, hash, draft, isLeftNavExpanded, isChanged, isEditing, snips, schema, layout } = state;
+	const { content: prevContent, hash: prevHash } = memo;
 	const hashPath = `${pathname}${hash}`;
 	const content = draft || files[pathname] || '';
-	const ref = [];
 
 	if (content !== prevContent || hash !== prevHash) {
-		memo[0] = content;
-		memo[1] = hash;
+		memo.content = content;
+		memo.hash = hash;
 
 		if (content !== prevContent) {
 			const contentLayout = parseMD(content);
@@ -761,70 +763,41 @@ function Page (memo) {
 			processTemplate(pathname, contentLayout).then(([layout, schema, styles, ...resources]) => {
 				const cssUrls = resources.filter(url => url.endsWith('.css'));
 				const jsUrls = resources.filter(url => /\.m?js$/.test(url));
-				const [main] = ref;
-				let { shadowRoot } = main;
+				const style = document.querySelector('#styles');
+				state.schema = schema;
 
-				if (!shadowRoot) {
-					const style = document.querySelector('#styles');
-					const baseStylesheet = new CSSStyleSheet();
-					baseStylesheet.replaceSync(style.innerText);
+				state.layout = ['', null,
+					...cssUrls.map(href => ['link', { rel: 'stylesheet', href }]),
+					['style', null, `${style.innerText}\n${styles}`],
+					...layout,
+				];
 
-					const customStylesheet = new CSSStyleSheet();
-					customStylesheet.replaceSync(styles);
-					console.log(styles, resources);
+				jsUrls.reduce((promise, src) => {
+					return promise.then(() => {
+						return new Promise(resolve => {
+							const script = document.createElement('script');
+							script.onload = resolve;
 
-					shadowRoot = main.attachShadow({ mode: 'open' });
-					shadowRoot.adoptedStyleSheets = [baseStylesheet, customStylesheet];
-					state.schema = schema;
-				}
+							if (src.endsWith('.mjs')) {
+								script.type = 'module';
+							}
 
-				Promise.all(cssUrls.map(href => {
-					return new Promise(resolve => {
-						const link = document.createElement('link');
-						link.onload = resolve;
-						link.rel = 'stylesheet';
-						link.href = href;
-						shadowRoot.appendChild(link);
-					});
-				})).then(() => {
-					// TODO: get stew to work fully with shadowRoot (it needs to call attachShadow with the desired mode)
-					// - not using it that way here since it needs to wait for css to load and I didn't want to add state
-					// window.stew(shadowRoot, layout);
-
-					const fragment = window.stew('', layout);
-					shadowRoot.appendChild(fragment);
-					
-					// module script tags don't seem to respect order when inserted after page load
-					// - this won't be a problem when we move to server render these
-					// - may need to keep this for when changes are being previewed though while editing
-					// - could maybe add preloads of all of them at once and then adds tags in sequence, if we wanted to get fancy
-					jsUrls.reduce((promise, src) => {
-						return promise.then(() => {
-							return new Promise(resolve => {
-								const script = document.createElement('script');
-								script.onload = resolve;
-
-								if (src.endsWith('.mjs')) {
-									script.type = 'module';
-								}
-
-								script.src = src;
-								shadowRoot.appendChild(script);
-							});
+							script.src = src;
+							document.body.appendChild(script);
 						});
-					}, Promise.resolve());
-				});
+					});
+				}, Promise.resolve());
 			});
 		}
 
 		const manifest = {};
-		memo[2] = manifest;
+		memo.manifest = manifest;
 		getCitations(pathname, manifest);
 		// getMentions(pathname, citations);
 	}
 
 	const leftButtonClassName = `expand-left ${!isLeftNavExpanded ? 'toggle-off' : ''}`;
-	const [manifest] = memo.slice(2);
+	const { manifest } = memo;
 	headerIndex = 0;
 
 	// TODO: render form using schema
@@ -838,8 +811,8 @@ function Page (memo) {
 		// - should nameless (anonymous) functions share children? They would always be different between renders (no name means it was never stored to variable)
 		// - if a function needs to be treated as a separate entity, either use a ref in its output or separate it out as its own component
 		isEditing
-			? EditingPanel
-			: isLeftNavExpanded && renderLeftMenu(manifest, hashPath, ...snips),
+			? [EditingPanel, { schema }]
+			: isLeftNavExpanded && [LeftMenu, { manifest, hashPath, snips }],
 		['div', {
 			className: 'main',
 		},
@@ -896,13 +869,9 @@ function Page (memo) {
 							state.isEditing = false;
 						},
 					}, '✕'],
-			['div', { ref },
-				// server render with this property, and make sure stew sets it properly
-				// have stew handle hydration and updates properly with shadowrootmode set to open
-				// ['template', { shadowrootmode: 'open' }, layout],
-			],
+			['div', { mode: 'open' }, layout],
 		],
-		!isEditing && renderRightMenu(manifest),
+		!isEditing && [RightMenu],
 	];
 }
 

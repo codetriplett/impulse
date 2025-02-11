@@ -1,5 +1,6 @@
 ```
-/site/category.mjs
+/site/other.css
+/site/other.mjs
 {
 	page: '(\w*) Page',
 }

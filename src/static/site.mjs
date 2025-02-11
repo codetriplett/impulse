@@ -10,4 +10,4 @@ export default [site, {
 	height: 60px;
 	color: white;
 	background: dimgray;
-}`];
+}`, '/other.css', '/other.mjs'];
