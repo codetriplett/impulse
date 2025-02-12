@@ -5,7 +5,7 @@ export const site = function ({ category, '': content }) {
 	];
 };
 export default [site, {
-	category: '(\w*) Category',
+	category: '(\\w*) Category',
 }, `.header {
 	height: 60px;
 	color: white;

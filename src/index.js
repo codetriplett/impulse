@@ -519,7 +519,7 @@ function RightMenu () {
 	return ['ul', {
 		className: 'snips',
 	},
-		...snips.map(hashPath => [Citation, { hashPath }]),
+		...snips.map(hashPath => Citation({ hashPath })),
 	];
 }
 
@@ -622,6 +622,59 @@ const editRef = [];
 // - set stew extention to allow webGL shaders (e.g. ['canvas', { width, height }, shader`...`, shader`...`])
 
 
+// () boolean, which are optional by default
+// template/path(\w*) fragment, which can provide a pattern for the final part of the path to fill in
+
+// (\w+) string that matches pattern
+// ([a-z])i with flags
+
+// (5) any number 5 or below
+// -5(5) any number between -5 and 5
+// -5() any number -5 or above
+// -5() any number -5 or above
+
+// ['(5) array', ...] // can add up to 5 items from the options in the list
+
+function FormField (value, ...names) {
+	if (Array.isArray(value)) {
+		// TODO: render select box and unordered list
+		return;
+	} else if (typeof value === 'object') {
+		return FormObject(value, ...names);
+	}
+
+	const [, min, path, max, pattern, flags, text] = value.match(/^\s*(?:(-?\d+)|(.*?))\s*\(\s*(?:(-?\d+)|(.*?))\s*\)([a-z]*)\s*(.*?)\s*$/);
+	const id = names.join('.');
+	const label = ['label', { for: id }, text];
+	let input;
+
+	if (path || pattern) {
+		input = ['input', { type: 'text', dataset: { path, pattern, flags } }];
+	} else if (min || max) {
+		input = ['input', { type: 'number', min: min || 0, max: max || 0 }];
+	} else {
+		input = ['input', { type: 'checkbox' }];
+	}
+
+	return ['', null, label, input];
+}
+
+function FormObject (object, ...names) {
+	return ['ul', null,
+		...Object.entries(object).map(([name, field]) => {
+			return ['li', null,
+				FormField(field, ...names, name),
+			];
+		}),
+	];
+}
+
+function Form (schema) {
+	return ['div', {
+		className: 'form',
+	}, FormObject(schema)];
+}
+
 // TODO: read .md and .json files from server if they are not found in local storage
 // - only store files in local storage when saved while on nerve.dev
 // - put options on home page to backup local storage files to zip file, or restore its content from a zip file
@@ -642,9 +695,7 @@ function EditingPanel ({ schema }) {
 		key: 'edit',
 		className: 'edit',
 	},
-		['div', {
-			className: 'form',
-		}, 'PUT FORM HERE'],
+		Form(schema),
 		['textarea', {
 			className: 'editor',
 			placeholder: '(empty)',
@@ -759,7 +810,7 @@ function Page (memo) {
 
 		if (content !== prevContent) {
 			const contentLayout = parseMD(content);
-			
+
 			processTemplate(pathname, contentLayout).then(([layout, schema, styles, ...resources]) => {
 				const cssUrls = resources.filter(url => url.endsWith('.css'));
 				const jsUrls = resources.filter(url => /\.m?js$/.test(url));
@@ -811,8 +862,8 @@ function Page (memo) {
 		// - should nameless (anonymous) functions share children? They would always be different between renders (no name means it was never stored to variable)
 		// - if a function needs to be treated as a separate entity, either use a ref in its output or separate it out as its own component
 		isEditing
-			? [EditingPanel, { schema }]
-			: isLeftNavExpanded && [LeftMenu, { manifest, hashPath, snips }],
+			? EditingPanel({ schema })
+			: isLeftNavExpanded && LeftMenu({ manifest, hashPath, snips }),
 		['div', {
 			className: 'main',
 		},
@@ -871,7 +922,7 @@ function Page (memo) {
 					}, '✕'],
 			['div', { mode: 'open' }, layout],
 		],
-		!isEditing && [RightMenu],
+		!isEditing && RightMenu(),
 	];
 }
 

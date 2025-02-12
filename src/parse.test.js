@@ -1248,7 +1248,7 @@ function (props) {
 	it('extracts blocks from template', () => {
 		const text =
 `\`\`\`
-{ key: 'value' }
+{ key: '(\\w*) Value' }
 \`\`\`
 # Header
 \`\`\`
@@ -1268,7 +1268,7 @@ function (props) {
 		expect(actual).toEqual(
 `export default [function (props) {
 	return props;
-}, { key: 'value' }, ''];`
+}, { key: '(\\w*) Value' }, \`\`];`
 		);
 	});
 
@@ -1298,7 +1298,7 @@ function (props) {
 		expect(actual).toEqual(
 `export default [function (props) {
 	return props;
-}, { key: 'value' }, '...styles', '/one', '/two'];`
+}, { key: 'value' }, \`...styles\`, '/one', '/two'];`
 		);
 	});
 
@@ -1326,7 +1326,7 @@ function (props) {
 `export const render = function (props) {
 	return props;
 };
-export default [render, { key: 'value' }, ''];`
+export default [render, { key: 'value' }, \`\`];`
 		);
 	});
 
@@ -1367,7 +1367,7 @@ function () {
 export const state = stew.createState({ ...state });
 export default [function (props) {
 	return props;
-}, { key: 'value' }, ''];`
+}, { key: 'value' }, \`\`];`
 		);
 	});
 
@@ -1397,10 +1397,10 @@ function (props) {
 
 		expect(actual).toEqual(
 `import { default as main, named } from '/remote.mjs';
-import * as remote from '/remote.mjs;
+import * as remote from '/remote.mjs';
 export default [function (props) {
 	return props;
-}, { key: 'value' }, ''];`
+}, { key: 'value' }, \`\`];`
 		);
 	});
 });
