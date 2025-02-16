@@ -6,6 +6,7 @@ import { parse } from './parse';
 import { updateNode } from './map';
 import { getObject } from './common';
 import { parseMD, extractTemplate, extractBlocks } from './parse';
+import { FormField } from './form';
 import { createState, onRender } from '@triplett/stew';
 
 const { pathname, hash } = window.location;
@@ -635,35 +636,80 @@ const editRef = [];
 
 // ['(5) array', ...] // can add up to 5 items from the options in the list
 
-function FormField (value, ...names) {
-	if (Array.isArray(value)) {
-		// TODO: render select box and unordered list
-		return;
-	} else if (typeof value === 'object') {
-		return FormObject(value, ...names);
-	}
+// function FormField (value, ...names) {
+// 	if (Array.isArray(value)) {
+// 		// TODO: render select box and unordered list
+// 		return;
+// 	} else if (typeof value === 'object') {
+// 		return FormObject(value, ...names);
+// 	}
 
-	const [, min, path, max, pattern, flags, text] = value.match(/^\s*(?:(-?\d+)|(.*?))\s*\(\s*(?:(-?\d+)|(.*?))\s*\)([a-z]*)\s*(.*?)\s*$/);
-	const id = names.join('.');
-	const label = ['label', { for: id }, text];
-	let input;
+// 	const [, type, path, pattern, flags, text] = value.match(/^\s*(\w*)\/(.*?)\/(\w*)      (.*?)\s*\(\s*(.*?)\s*\)(.*?)\s*(.*?)\s*$/);
+// 	const id = names.join('.');
+// 	const label = ['label', { for: id }, text];
+// 	let input;
 
-	if (path || pattern) {
-		input = ['input', { type: 'text', dataset: { path, pattern, flags } }];
-	} else if (min || max) {
-		input = ['input', { type: 'number', min: min || 0, max: max || 0 }];
-	} else {
-		input = ['input', { type: 'checkbox' }];
-	}
+// 	// pattern (set pattern attribute)
+// 	// =================
+// 	// /\w*/i -> string (optional)
+// 	// /\w+/i -> string (required)
+// 	// /path/\w*/i -> component with string name (optional)
+// 	// /path/0..5 -> component with number name (optional)
+// 	// url
+// 	// email
+// 	// tel
 
-	return ['', null, label, input];
-}
+// 	// range (set min and/or max attribute, also allow step if min..step..max)
+// 	// =================
+// 	// number/ (123)
+// 	// - or just 0..5 -> number
+// 	// range/ (123)
+// 	// datetime-local/ (2018-06-07T00:00) steps in seconds
+// 	// date/ (2018-07-22) steps in days
+// 	// month/ (2018-05) steps in months
+// 	// week/ (2018-W26) steps in weeks
+// 	// time/ (00:00) steps in seconds
+
+// 	// type/..path/pattern/flags
+// 	// type/range
+// 	// type
+// 	// /path
+
+
+
+// 	// / -> boolean
+
+// 	// date/1900-01-01..* -> <input type="date" min="1900-01-01">
+
+// 	// color (#ff0000)
+// 	// number (123)
+// 	// range (123)
+
+// 	// checkbox
+// 	// radio
+
+// 	if (!type) {
+
+// 	}
+
+
+
+// 	if (path || pattern) {
+// 		input = ['input', { type: 'text', dataset: { path, pattern, flags } }];
+// 	} else if (min || max) {
+// 		input = ['input', { type: 'number', min: min || 0, max: max || 0 }];
+// 	} else {
+// 		input = ['input', { type: 'checkbox' }];
+// 	}
+
+// 	return ['', null, label, input];
+// }
 
 function FormObject (object, ...names) {
 	return ['ul', null,
 		...Object.entries(object).map(([name, field]) => {
 			return ['li', null,
-				FormField(field, ...names, name),
+				...FormField(field, ...names, name),
 			];
 		}),
 	];

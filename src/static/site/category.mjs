@@ -5,7 +5,7 @@ export const category = function ({ page, '': content }) {
 	];
 };
 export default [category, {
-	page: '(\\w*) Page',
+	page: '// Page',
 }, `.category {
 	display: flex;
 }

@@ -2,7 +2,7 @@
 /other.css
 /other.mjs
 {
-	category: '(\w*) Category',
+	category: '// Category',
 }
 .header {
 	height: 60px;

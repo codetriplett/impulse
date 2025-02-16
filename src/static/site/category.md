@@ -2,7 +2,7 @@
 /site/other.css
 /site/other.mjs
 {
-	page: '(\w*) Page',
+	page: '// Page',
 }
 .category {
 	display: flex;
