@@ -77,90 +77,151 @@ export function findOption (value, ...options) {
 	return options.indexOf(option);
 }
 
+function FormSelect (definition, value, ...names) {
+	const [first, ...rest] = definition;
+	const field = FormField(first, undefined, ...names);
+	const inputs = [];
+
+	if (!field.length) {
+		return [];
+	} else if (field[1][0] === 'label') {
+		field.reverse();
+	}
+
+	const options = rest.map(definition => {
+		const [label, input] = FormField(definition, undefined, ...names);
+		inputs.push(input);
+		return ['option', {}, label[2]];
+	});
+
+	const [label, input] = field;
+	const { type, placeholder } = input[1];
+	const selectProps = {};
+	const select = ['select', selectProps, ...options];
+	delete label[1].for;
+
+	switch (type) {
+		case 'checkbox': {
+			const index = findOption(value, ...inputs);
+			let input = ['', {}];
+			const option = ['option', {}, placeholder || 'Select item...'];
+			select.splice(2, 0, option);
+
+			selectProps.onchange = ({ selectedIndex }) => {
+				const newInput = inputs[selectedIndex - 1] || ['', {}];
+				const newInputProps = newInput[1];
+				const { placeholder, disabled } = newInputProps;
+
+				if (disabled) {
+					newInputProps.value = placeholder;
+				} else {
+					delete newInputProps.value;
+				}
+
+				input.splice(0, 3, ...newInput);
+			};
+
+			if (index !== -1) {
+				input = inputs[index];
+				input[1].value = value;
+				options[index][1].selected = true;
+			}
+
+			return [label, select, input];
+		}
+		case 'number':
+		case 'range': {
+			const array = Array.isArray(value) ? value : [];
+			const list = ['ol', {}];
+			const option = ['option', {}, placeholder || 'Add item...'];
+			select.splice(2, 0, option);
+			label[1] = {};
+			
+			selectProps.onchange = ({ selectedIndex }) => {
+				const newInput = inputs[selectedIndex - 1];
+				select[2][1].selected = true;
+
+				if (!newInput) {
+					return;
+				}
+
+				const clonedInput = [...newInput];
+				clonedInput[1] = { ...clonedInput[1] };
+				clonedInput[1].id += `[${list.length - 2}]`;
+				list.push(['li', {}, clonedInput]);
+			};
+
+			for (const [i, value] of array.entries()) {
+				const index = findOption(value, ...inputs);
+				const item = ['li', {}];
+
+				if (index === -1) {
+					item[2] = 'Invalid Item';
+				} else {
+					const field = FormField(rest[index], value, ...names, i);
+					item[2] = field[field[0][0] === 'label' ? 1 : 0];
+				}
+
+				list.push(item);
+			}
+
+			return [label, list, select];
+		}
+	}
+
+	const object = typeof value === 'object' && !Array.isArray(value) ? value : {};
+	const list = ['ul', {}];
+	const option = ['option', {}, placeholder || 'Add property...'];
+	select.splice(2, 0, option);
+	delete input[1].id;
+	delete input[1].placeholder;
+	label[1] = {};
+			
+	selectProps.onchange = ({ selectedIndex }) => {
+		const name = input[1].value;
+		const newInput = inputs[selectedIndex - 1];
+		select[2][1].selected = true;
+
+		if (!name || !newInput) {
+			return;
+		}
+
+		delete input[1].value;
+		const clonedInput = [...newInput];
+		clonedInput[1] = { ...clonedInput[1] };
+		clonedInput[1].id += `.${name}`;
+		const label = ['label', { for: clonedInput[1].id }, name];
+		list.push(['li', {}, label, clonedInput]);
+	};
+
+	for (const [name, value] of Object.entries(object)) {
+		const index = findOption(value, ...inputs);
+		const item = ['li', {}];
+
+		if (index === -1) {
+			item[2] = 'Invalid Item';
+		} else {
+			const field = FormField(rest[index], value, ...names, name);
+
+			if (field[1][0] === 'label') {
+				field.reverse();
+			}
+
+			const [label, input] = field;
+			label[2] = name;
+			item[2] = label;
+			item[3] = input;
+		}
+
+		list.push(item);
+	}
+
+	return [label, list, input, select];
+}
+
 export function FormField (definition, value, ...names) {
 	if (Array.isArray(definition)) {
-		const [first, ...rest] = definition;
-		const field = FormField(first, undefined, ...names);
-		const inputs = [];
-
-		if (field[1]?.[0] === 'label') {
-			field.reverse();
-		}
-
-		const options = rest.map(definition => {
-			const [label, input] = FormField(definition);
-			const { type, placeholder, disabled } = input?.[1] || {};
-			const props = {};
-
-			if (disabled) {
-				props.value = placeholder;
-
-				if (type === 'number' || type === 'range') {
-					props.dataset = { type: /^true|false$/.test(placeholder) ? 'boolean' : 'number' };
-				}
-			}
-
-			inputs.push(input);
-			return ['option', props, label[2]];
-		});
-
-		const [label, input] = field;
-		const select = ['select', {}, ...options];
-
-		switch (input?.[1]?.type) {
-			case 'checkbox': {
-				const index = findOption(value, ...inputs);
-
-				if (index !== -1) {
-					const input = inputs[index];
-					options[index][1].selected = true;
-
-					if (!input[1].disabled) {
-						const field = FormField(rest[index], value, ...names);
-						const input = field[field[0][0] === 'label' ? 1 : 0];
-						return [label, select, input];
-					}
-				} else {
-					select[1].id = label[1].for;
-				}
-
-				return [label, select];
-			}
-			case 'number':
-			case 'range': {
-				const array = Array.isArray(value) ? value : [];
-				const list = ['ol', {}];
-				label[1] = {};
-				select[1].dataset = { type: 'array' };
-
-				for (const [i, value] of array.entries()) {
-					const index = findOption(value, ...inputs);
-					const item = ['li', {}];
-
-					if (index === -1) {
-						item[2] = 'Invalid Item';
-					} else {
-						const field = FormField(rest[index], value, ...names, i);
-						item[2] = field[field[0][0] === 'label' ? 1 : 0];
-					}
-
-					list.push(item);
-				}
-
-				const option = ['option', {}, 'Add new item...'];
-				select.splice(2, 0, option);
-				return [label, list, select];
-			}
-			default: {
-				// TODO: similar to above, but set dataset: { type: 'object' }
-				// - also put input element from definition before select element
-				break;
-			}
-		}
-
-		// TODO: add select box with onchange that inserts the correct field(s)
-		// - look at cms project for existing code
-		return [];
+		return FormSelect(definition, value, ...names);
 	} else if (typeof definition === 'object') {
 		const object = typeof value === 'object' && !Array.isArray(value) ? value : {};
 		const elements = [];
@@ -175,7 +236,8 @@ export function FormField (definition, value, ...names) {
 	let match = definition.match(/^\s*(?:(.+?)\s+)?(\S*?)\/(.*?)(?:\/([^/]*?))?(?:\/([^/]*?))?(\*?)?(?:\s+(.+))?\s*$/);
 
 	if (!match) {
-		match = [,, 'checkbox', '',,,, definition.trim()];
+		const [, required, text] = definition.match(/^\s*(\*?)\s*(.*?)\s*$/);
+		match = [,, 'checkbox', '',,, required, text];
 	}
 
 	let [, placeholder, type, path, pattern, range, required, text] = match;
