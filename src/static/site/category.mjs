@@ -5,7 +5,13 @@ export const category = function ({ page, '': content }) {
 	];
 };
 export default [category, {
-	page: '// Page',
+	// page: '// Page',
+
+	boolean: '* Boolean',
+	number: '/2..4* Number',
+	string: '/\\d+-\\d+/ String',
+	fallback: 'xyz *// Fallback',
+	literal: 'abc *//* Fallback',
 }, `.category {
 	display: flex;
 }

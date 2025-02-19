@@ -115,8 +115,8 @@ describe('FormField', () => {
 			const actual = FormField('789 */ Label', 123, 'group', 'name');
 
 			expect(actual).toEqual([
-				['label', { for: 'group.name' }, 'Label'],
-				['input', { type: 'number', id: 'group.name', placeholder: '789', value: '123' }],
+				['label', { for: '.group.name' }, 'Label'],
+				['input', { type: 'number', id: '.group.name', placeholder: '789', value: '123' }],
 			]);
 		});
 
@@ -261,8 +261,8 @@ describe('FormField', () => {
 			const actual = FormField('xyz *// Label', 'abc', 'group', 'name');
 
 			expect(actual).toEqual([
-				['label', { for: 'group.name' }, 'Label'],
-				['input', { type: 'text', id: 'group.name', placeholder: 'xyz', value: 'abc' }],
+				['label', { for: '.group.name' }, 'Label'],
+				['input', { type: 'text', id: '.group.name', placeholder: 'xyz', value: 'abc' }],
 			]);
 		});
 
@@ -349,12 +349,12 @@ describe('FormField', () => {
 			]);
 		});
 
-		it('checkbox required', () => {
-			const actual = FormField('false * Label', true, 'group', 'name');
+		it('checkbox fallback', () => {
+			const actual = FormField('* Label', true, 'group', 'name');
 
 			expect(actual).toEqual([
-				['input', { type: 'checkbox', id: 'group.name', checked: true, required: true }],
-				['label', { for: 'group.name' }, 'Label'],
+				['input', { type: 'checkbox', id: '.group.name', checked: true }],
+				['label', { for: '.group.name' }, 'Label'],
 			]);
 		});
 
@@ -604,7 +604,7 @@ describe('FormField', () => {
 		});
 	});
 
-	describe('object builder', () => {
+	describe('properties', () => {
 		it('unpopulated', () => {
 			const actual = FormField(['// Label',
 				'/ Number',

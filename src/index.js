@@ -705,20 +705,74 @@ const editRef = [];
 // 	return ['', null, label, input];
 // }
 
-function FormObject (object, ...names) {
-	return ['ul', null,
-		...Object.entries(object).map(([name, field]) => {
-			return ['li', null,
-				...FormField(field, ...names, name),
-			];
-		}),
-	];
+function convertValue (type, value, checked) {
+	switch (type) {
+		case 'checkbox': {
+			return checked;
+		}
+		case 'number':
+		case 'range': {
+			return Number(value);
+		}
+	}
+
+	return value;
 }
 
-function Form (schema) {
-	return ['div', {
+function Form (schema, props) {
+	return ['form', {
 		className: 'form',
-	}, FormObject(schema)];
+		onsubmit: event => {
+			event.preventDefault();
+			const form = event.target;
+			const data = {};
+
+			if (!form.checkValidity()) {
+				return;
+			}
+
+			for (const input of form.elements) {
+				const { type, id, value, checked, placeholder } = input;
+
+				if (!id) {
+					continue;
+				}
+
+				const names = id.split(/\.|(?=\[)/).map(name => name[0] === '[' ? Number(name.slice(1, -1)) : name);
+				const finalName = names.pop();
+				let castValue = convertValue(type, value, checked);
+				
+				if (names[0] === '') {
+					names.shift();
+
+					if (!castValue) {
+						castValue = convertValue(type, placeholder, checked);
+					}
+				} else if (!castValue) {
+					continue;
+				}
+
+				const object = names.reduce((object, name) => {
+					if (object[name]) {
+						return object[name];
+					}
+
+					const newObject = typeof name === 'number' ? [] : {};
+					object[name] = newObject
+					return newObject;
+				}, data);
+
+				object[finalName] = castValue;
+			}
+
+			console.log(data);
+		},
+	},
+		...FormField(schema, props),
+
+		// TODO: remove this and have preview/save trigger submit action
+		['button', { type: 'submit' }, 'Submit'],
+	];
 }
 
 // TODO: read .md and .json files from server if they are not found in local storage

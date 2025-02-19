@@ -233,16 +233,17 @@ export function FormField (definition, value, ...names) {
 		return elements;
 	}
 
-	let match = definition.match(/^\s*(?:(.+?)\s+)?(\**)(\S*?)\/(.*?)(?:\/([^/]*?))?(?:\/([^/]*?))?(\**)(?:\s+(.+))?\s*$/);
+	let match = definition.match(/^\s*(?:([^*]+?)\s+)?(\**)(\S*?)\/(.*?)(?:\/([^/]*?))?(?:\/([^/]*?))?(\**)(?:\s+(.+))?\s*$/);
 
 	if (!match) {
-		const [, placeholder, symbols, text] = definition.match(/^\s*(?:(.+?)\s+)?(\*?\*?)(?:\s*(.+))?\s*$/);
-		match = [, placeholder, symbols[1], 'checkbox', '',,, symbols[0], text];
+		const [, placeholder, persist, required, text] = definition.match(/^\s*(?:([^*]+?)\s+)?(\*?)(\*?)(?:\s*(.+))?\s*$/);
+		match = [, placeholder, persist, 'checkbox', '',,, required, text];
 	}
 
 	let [, placeholder, persist, type, path, pattern, range, required, text] = match;
 	const isLiteral = persist && required;
-	required = required && !persist;
+	persist = persist && !isLiteral;
+	required = required && !isLiteral;
 
 	if (pattern === undefined) {
 		range = path;
@@ -277,6 +278,10 @@ export function FormField (definition, value, ...names) {
 
 	if (required) {
 		props.required = true;
+	} else if (persist) {
+		const id = `.${props.id}`;
+		label[1].for = id;
+		props.id = id;
 	}
 
 	if (type === 'checkbox') {
