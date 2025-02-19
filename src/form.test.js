@@ -74,6 +74,23 @@ describe('findOption', () => {
 	});
 });
 
+// Literal: sets value and disabled prop
+// =============
+// true ** Boolean
+// 123 */* Number
+// abc *//* String
+
+// Required: rejects form submission when empty (placeholder is just a suggestion)
+// =============
+// true * Boolean
+// 123 /* Number
+// abc //* String
+
+// Default: stores placeholder when empty
+// =============
+// 123 */ Number
+// abc *// String
+
 describe('FormField', () => {
 	describe('number', () => {
 		it('unpopulated', () => {
@@ -91,6 +108,33 @@ describe('FormField', () => {
 			expect(actual).toEqual([
 				['label', { for: 'group.name' }, 'Label'],
 				['input', { type: 'number', id: 'group.name', value: '123' }],
+			]);
+		});
+
+		it('fallback', () => {
+			const actual = FormField('789 */ Label', 123, 'group', 'name');
+
+			expect(actual).toEqual([
+				['label', { for: 'group.name' }, 'Label'],
+				['input', { type: 'number', id: 'group.name', placeholder: '789', value: '123' }],
+			]);
+		});
+
+		it('required', () => {
+			const actual = FormField('789 /* Label', 123, 'group', 'name');
+
+			expect(actual).toEqual([
+				['label', { for: 'group.name' }, 'Label'],
+				['input', { type: 'number', id: 'group.name', placeholder: '789', value: '123', required: true }],
+			]);
+		});
+
+		it('literal', () => {
+			const actual = FormField('789 */* Label', 123, 'group', 'name');
+
+			expect(actual).toEqual([
+				['label', { for: 'group.name' }, 'Label'],
+				['input', { type: 'number', id: 'group.name', value: '789', disabled: true }],
 			]);
 		});
 
@@ -213,6 +257,33 @@ describe('FormField', () => {
 			]);
 		});
 
+		it('fallback', () => {
+			const actual = FormField('xyz *// Label', 'abc', 'group', 'name');
+
+			expect(actual).toEqual([
+				['label', { for: 'group.name' }, 'Label'],
+				['input', { type: 'text', id: 'group.name', placeholder: 'xyz', value: 'abc' }],
+			]);
+		});
+
+		it('required', () => {
+			const actual = FormField('xyz //* Label', 'abc', 'group', 'name');
+
+			expect(actual).toEqual([
+				['label', { for: 'group.name' }, 'Label'],
+				['input', { type: 'text', id: 'group.name', placeholder: 'xyz', value: 'abc', required: true }],
+			]);
+		});
+
+		it('literal', () => {
+			const actual = FormField('xyz *//* Label', 'abc', 'group', 'name');
+
+			expect(actual).toEqual([
+				['label', { for: 'group.name' }, 'Label'],
+				['input', { type: 'text', id: 'group.name', value: 'xyz', disabled: true }],
+			]);
+		});
+
 		it('pattern', () => {
 			const actual = FormField('/\\w*/ Label', undefined, 'group', 'name');
 
@@ -260,24 +331,6 @@ describe('FormField', () => {
 	});
 
 	describe('other', () => {
-		it('sets placeholder', () => {
-			const actual = FormField('Enter Value // Field Name', undefined, 'group', 'name');
-
-			expect(actual).toEqual([
-				['label', { for: 'group.name' }, 'Field Name'],
-				['input', { type: 'text', id: 'group.name', placeholder: 'Enter Value' }],
-			]);
-		});
-
-		it('sets as required', () => {
-			const actual = FormField('//* Label', undefined, 'group', 'name');
-
-			expect(actual).toEqual([
-				['label', { for: 'group.name' }, 'Label'],
-				['input', { type: 'text', id: 'group.name', required: true }],
-			]);
-		});
-		
 		it('checkbox unpopulated', () => {
 			const actual = FormField('Label', undefined, 'group', 'name');
 
@@ -292,6 +345,24 @@ describe('FormField', () => {
 
 			expect(actual).toEqual([
 				['input', { type: 'checkbox', id: 'group.name', checked: true }],
+				['label', { for: 'group.name' }, 'Label'],
+			]);
+		});
+
+		it('checkbox required', () => {
+			const actual = FormField('false * Label', true, 'group', 'name');
+
+			expect(actual).toEqual([
+				['input', { type: 'checkbox', id: 'group.name', checked: true, required: true }],
+				['label', { for: 'group.name' }, 'Label'],
+			]);
+		});
+
+		it('checkbox literal', () => {
+			const actual = FormField('false ** Label', true, 'group', 'name');
+
+			expect(actual).toEqual([
+				['input', { type: 'checkbox', id: 'group.name', checked: false, disabled: true }],
 				['label', { for: 'group.name' }, 'Label'],
 			]);
 		});
@@ -328,19 +399,6 @@ describe('FormField', () => {
 		});
 	});
 
-	// 'Label': checkbox
-	// ['Label', ...]: radio buttons showing each option
-	// - display form options if non-literal is selected
-
-	// '/ Label': number input
-	// ['/ Label', ...]: select box where selection creates a new array item
-
-	// '// Label': string input
-	// ['// Label', ...]: select box where selection creates a new property in an object
-	// - key must stick to pattern and range
-	// - not sure what the use would be for this, but it makes the most sense for the format
-	// - essentially, the type sets the key format of object/array
-
 	describe('select', () => {
 		it('unpopulated', () => {
 			const actual = FormField(['Label',
@@ -362,7 +420,7 @@ describe('FormField', () => {
 		it('populated with literal', () => {
 			const actual = FormField(['Label',
 				'/ Number',
-				'abc *// Text',
+				'abc *//* Text',
 			], 'abc', 'group', 'name');
 
 			expect(actual).toEqual([
@@ -372,7 +430,7 @@ describe('FormField', () => {
 					['option', {}, 'Number'],
 					['option', { selected: true }, 'Text'],
 				],
-				['input', { type: 'text', id: 'group.name', placeholder: 'abc', disabled: true, value: 'abc' }],
+				['input', { type: 'text', id: 'group.name', disabled: true, value: 'abc' }],
 			]);
 		});
 
@@ -395,8 +453,8 @@ describe('FormField', () => {
 
 		it('set', () => {
 			const actual = FormField(['Label',
-				'123 */ Number',
-				'abc *// Text',
+				'123 */* Number',
+				'abc *//* Text',
 			], undefined, 'group', 'name');
 
 			const select = actual[1];
@@ -410,13 +468,13 @@ describe('FormField', () => {
 					['option', {}, 'Number'],
 					['option', {}, 'Text'],
 				],
-				['input', { type: 'text', id: 'group.name', placeholder: 'abc', disabled: true, value: 'abc' }],
+				['input', { type: 'text', id: 'group.name', disabled: true, value: 'abc' }],
 			]);
 		});
 		
 		it('changed to literal', () => {
 			const actual = FormField(['Label',
-				'123 */ Number',
+				'123 */* Number',
 				'// Text',
 			], 'abc', 'group', 'name');
 
@@ -431,7 +489,7 @@ describe('FormField', () => {
 					['option', {}, 'Number'],
 					['option', { selected: true }, 'Text'],
 				],
-				['input', { type: 'number', id: 'group.name', placeholder: '123', disabled: true, value: '123' }],
+				['input', { type: 'number', id: 'group.name', disabled: true, value: '123' }],
 			]);
 		});
 		
@@ -647,14 +705,4 @@ describe('FormField', () => {
 			]);
 		});
 	});
-
-	// it('array', () => {
-	// 	const actual = FormField(['/.. Label'], 'group', 'name');
-
-	// 	expect(actual).toEqual([
-	// 	]);
-	// });
 });
-
-// anf
-// gordon fan

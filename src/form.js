@@ -110,10 +110,10 @@ function FormSelect (definition, value, ...names) {
 			selectProps.onchange = ({ selectedIndex }) => {
 				const newInput = inputs[selectedIndex - 1] || ['', {}];
 				const newInputProps = newInput[1];
-				const { placeholder, disabled } = newInputProps;
+				const { value, disabled } = newInputProps;
 
 				if (disabled) {
-					newInputProps.value = placeholder;
+					newInputProps.value = value;
 				} else {
 					delete newInputProps.value;
 				}
@@ -233,15 +233,16 @@ export function FormField (definition, value, ...names) {
 		return elements;
 	}
 
-	let match = definition.match(/^\s*(?:(.+?)\s+)?(\S*?)\/(.*?)(?:\/([^/]*?))?(?:\/([^/]*?))?(\*?)?(?:\s+(.+))?\s*$/);
+	let match = definition.match(/^\s*(?:(.+?)\s+)?(\**)(\S*?)\/(.*?)(?:\/([^/]*?))?(?:\/([^/]*?))?(\**)(?:\s+(.+))?\s*$/);
 
 	if (!match) {
-		const [, required, text] = definition.match(/^\s*(\*?)\s*(.*?)\s*$/);
-		match = [,, 'checkbox', '',,, required, text];
+		const [, placeholder, symbols, text] = definition.match(/^\s*(?:(.+?)\s+)?(\*?\*?)(?:\s*(.+))?\s*$/);
+		match = [, placeholder, symbols[1], 'checkbox', '',,, symbols[0], text];
 	}
 
-	let [, placeholder, type, path, pattern, range, required, text] = match;
-	const isLiteral = type === '*';
+	let [, placeholder, persist, type, path, pattern, range, required, text] = match;
+	const isLiteral = persist && required;
+	required = required && !persist;
 
 	if (pattern === undefined) {
 		range = path;
@@ -252,7 +253,7 @@ export function FormField (definition, value, ...names) {
 		path = undefined;
 	}
 
-	if (!type || isLiteral) {
+	if (!type || isLiteral && type !== 'checkbox') {
 		type = pattern !== undefined ? 'text' : 'number';
 	}
 
@@ -260,14 +261,6 @@ export function FormField (definition, value, ...names) {
 	const props = { id };
 	const label = ['label', { for: id }, text];
 	const input = ['input', props];
-
-	if ((value || value === 0) && typeof value !== 'object') {
-		if (type === 'textarea') {
-			input[2] = String(value);
-		} else if (type !== 'checkbox') {
-			props.value = String(value);
-		}
-	}
 
 	if (type === 'textarea') {
 		input[0] = 'textarea';
@@ -277,26 +270,37 @@ export function FormField (definition, value, ...names) {
 
 	if (isLiteral) {
 		props.disabled = true;
-	}
-
-	if (placeholder) {
+		value = placeholder;
+	} else if (placeholder && type !== 'checkbox') {
 		props.placeholder = placeholder;
-	}
-
-	if (type === 'checkbox') {
-		if (value === true) {
-			input[1].checked = true;
-		}
-
-		return [input, label];
-	}
-
-	if (pattern) {
-		props.pattern = pattern;
 	}
 
 	if (required) {
 		props.required = true;
+	}
+
+	if (type === 'checkbox') {
+		if (isLiteral) {
+			props.checked = value === 'true';
+		} else if (value === true) {
+			props.checked = true;
+		}
+
+		return [input, label];
+	} else if ((value || value === 0) && typeof value !== 'object') {
+		if (type === 'textarea') {
+			input[2] = String(value);
+		} else if (type !== 'checkbox') {
+			props.value = String(value);
+		}
+	}
+
+	if (path) {
+		props.dataset = { path: `/${path}/` };
+	}
+
+	if (pattern) {
+		props.pattern = pattern;
 	}
 
 	if (range) {
@@ -313,10 +317,6 @@ export function FormField (definition, value, ...names) {
 		if (step && step !== '1' && type !== 'text') {
 			props.step = step;
 		}
-	}
-
-	if (path) {
-		props.dataset = { path: `/${path}/` };
 	}
 
 	return [label, input];
