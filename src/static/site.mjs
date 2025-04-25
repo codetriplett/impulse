@@ -1,4 +1,4 @@
-export const site = function ({ category, '': content }) {
+export const site = function ({ category }, content) {
 	return ['', null,
 		['div', { className: 'header' }, `${category} Header`],
 		content,

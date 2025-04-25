@@ -14,7 +14,7 @@
 # Site {#site}
 
 ```
-function ({ category, '': content }) {
+function ({ category }, content) {
 	return ['', null,
 		['div', { className: 'header' }, `${category} Header`],
 		content,

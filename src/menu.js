@@ -1,4 +1,4 @@
-import { state, recallSession } from '.';
+import { recallSession } from '.';
 
 export function renderMenu () {
 	return ['div', {

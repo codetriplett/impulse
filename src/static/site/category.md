@@ -16,7 +16,7 @@
 # Category {#category}
 
 ```
-function ({ page, '': content }) {
+function ({ page }, content) {
 	return ['div', { className: 'category' },
 		['div', { className: 'navigation' }, `${page} Nav`],
 		['div', null, content],
