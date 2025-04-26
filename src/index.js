@@ -1,3 +1,5 @@
+import { parseMD } from './parse';
+
 const { pathname, hash } = window.location;
 
 export const state = stew({
@@ -127,73 +129,86 @@ function HomePage () {
 	return ['p', {}, 'Home Page'];
 }
 
-function Content ({ path = '', names, module }) {
-	path += `/${names[0]}`;
-
-	let [content, data] = stew((prev = []) => {
-		for (const resource of prev.slice(2)) {
-			resource.remove();
-		}
-
-		return Promise.all([
-			names.length > 1 ? import(`${path}.mjs`) : fetch(`${path}.md`).then(res => res.text()),
-			module ? fetch(`${path}.json`).then(res => res.json()) : undefined,
-		]).then(array => {
-			if (names.length > 1) {
-				const [,, styles, ...resources] = array[0].default;
-				const cssUrls = resources.filter(url => url.endsWith('.css'));
-				const jsUrls = resources.filter(url => /\.m?js$/.test(url));
-				const stylesheet = document.createElement('style');
-				stylesheet.innerText = styles;
-				document.body.appendChild(stylesheet);
-
-				array.push(
-					stylesheet,
-					...cssUrls.map(href => {
-						const stylesheet = document.createElement('link');
-						Object.assign(stylesheet, { rel: 'stylesheet', href });
-						document.body.appendChild(stylesheet);
-						return stylesheet;
-					}),
-					...jsUrls.map(src => {
-						const script = document.createElement('script');
-						Object.assign(script, { type: 'module', src });
-						document.body.appendChild(script);
-						return script;
-					}),
-				);
-			}
-
-			return array;
-		});
-	}, [path], [
-		names.length > 1 ? {} : null,
-	]);
-
-	if (names.length > 1) {
-		content = Content({ path, names: names.slice(1), module: content });
-	}
-
-	if (!module) {
-		return content;
-	}
-
-	const [callback,, styles, ...resources] = module.default || [];
-	// TODO: add styles and resources (in shadow root like the old code did)
-	return data ? callback(data, content) : null;
+function Editor ({ schema, data }) {
+	// TODO: copy over old editing panel code
+	return ['div', { className: 'edit' },
+		...Object.entries(schema).map(definition => {
+			return ['input', {}];
+		}),
+	];
 }
 
 function Page () {
-	const names = pathname.slice(1).split('/');
 	// TODO: use fetched content and modules to render page
 	// TODO: render left nav
 	// TODO: render right nav
 
-	return ['div', {},
-		// TODO: wrap in this after shadow dom is tested, it isn't removing shadowRoot properly
-		// ['template', { shadowrootmode: 'open' },
-			[Content, { names }],
-		// ],
+	const sequence = stew(() => {
+		const names = pathname.slice(1).split('/');
+		const promises = [];
+		let path = '';
+
+		while (names.length) {
+			path += `/${names.shift()}`;
+
+			if (promises.length) {
+				promises.push(fetch(`${path}.json`).then(res => res.json()));
+			}
+
+			promises.push(names.length
+				? import(`${path}.mjs`)
+				: fetch(`${path}.md`).then(res => res.text()).then(text => parseMD(text))
+			);
+		}
+
+		return Promise.all(promises);
+	}, [], null);
+
+	if (!sequence) {
+		return;
+	}
+
+	const resources = [];
+	const schemas = [];
+	let content = sequence.pop();
+	const data = sequence[sequence.length - 1];
+
+	// maybe it would work better to have sequence in reverse order
+	while (sequence.length) {
+		const [module, data] = sequence.splice(-2);
+		const [Component, schema, styles, ...urls] = module.default;
+		const cssUrls = urls.filter(url => url.endsWith('.css'));
+		const jsUrls = urls.filter(url => /\.m?js$/.test(url));
+
+		for (const src of jsUrls.reverse()) {
+			resources.unshift(['script', { type: 'module', src }]);
+		}
+
+		for (const href of cssUrls.reverse()) {
+			resources.unshift(['link', { rel: 'stylesheet', href }]);
+		}
+		
+		schemas.unshift(schema);
+		resources.unshift(['style', {}, styles]);
+		content = Component(data, content);
+	}
+
+
+	const schema = Object.assign({}, ...schemas);
+	const styles = document.querySelector('#styles').textContent;
+	resources.unshift(['style', {}, styles]);
+
+	return ['', {},
+		// TODO: toggle between left nav and editing mode
+		[Editor, { schema, data }],
+		['div', { className: 'main' },
+			['template', { shadowrootmode: 'open' },
+				['', {},
+					...resources,
+					content,
+				],
+			],
+		],
 	];
 }
 
@@ -225,6 +240,9 @@ if (typeof window !== 'undefined') {
 			}
 		}
 
-		stew('#app', {}, [pathname === '/' ? HomePage : Page]);
+		// TODO: have object be for props instead of context
+		// - context can be set by wrapping children fragment
+		// - '' prop can still be used to set a converter function
+		stew('#app', { className: 'app' }, [pathname === '/' ? HomePage : Page]);
 	});
 }
