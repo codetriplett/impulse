@@ -1,4 +1,8 @@
-import { parseMD } from './parse';
+import { parse } from './parse';
+import { updateNode } from './map';
+import { getObject } from './common';
+import { parseMD, extractTemplate, extractBlocks } from './parse';
+import { FormField } from './form';
 
 const { pathname, hash } = window.location;
 
@@ -125,11 +129,20 @@ export async function recallSession () {
 	}
 }
 
+export function storeSession () {
+	const { files, map, templates, snips } = state;
+	window.localStorage.removeItem('impulse:map'); // in case the localStorage limit is reached
+	window.localStorage.setItem('impulse:files', JSON.stringify(files));
+	window.localStorage.setItem('impulse:map', JSON.stringify(map));
+	window.localStorage.setItem('impulse:templates', JSON.stringify(templates));
+	window.localStorage.setItem('impulse:snips', JSON.stringify(snips));
+}
+
 function HomePage () {
 	return ['p', {}, 'Home Page'];
 }
 
-function Editor ({ schema, data }) {
+function Form ({ schema, data }) {
 	// TODO: copy over old editing panel code
 	return ['div', { className: 'edit' },
 		...Object.entries(schema).map(definition => {
@@ -138,12 +151,85 @@ function Editor ({ schema, data }) {
 	];
 }
 
+function resizeTextarea (ref) {
+	const [textarea] = ref;
+	textarea.style.height = '0px';
+	const { scrollHeight } = textarea;
+	textarea.style.height = `${scrollHeight}px`;
+}
+
+function Editor ({ schema, data, file, editRef }) {
+	stew(null, [file], () => {
+		const [textarea] = editRef;
+		textarea.value = file;
+		resizeTextarea(editRef);
+	});
+
+	return ['div', {
+		className: 'edit',
+	},
+		// [Form, { schema, data }],
+		['textarea', {
+			className: 'editor',
+			placeholder: '(empty)',
+			ref: editRef,
+			onkeydown: () => {
+				resizeTextarea(editRef);
+				state.isChanged = true;
+			},
+			onkeyup: () => {
+				resizeTextarea(editRef);
+				state.isChanged = true;
+			},
+		}, file],
+	];
+}
+
+async function fetchFile (path) {
+	const { files } = state;
+	const file = files[path];
+
+	if (!file) {
+		return fetch(path);
+	}
+
+	return {
+		text: () => file,
+		json: () => JSON.parse(file),
+	};
+}
+
+function importFile (path) {
+	const { files } = state;
+	const file = files[path];
+
+	if (!file) {
+		return import(path);
+	}
+
+	return import(URL.createObjectURL(
+		new Blob([file], { type: 'application/javascript' })
+	));
+}
+
+function LeftMenu () {
+	return ['div', {
+		className: 'navigation',
+	}];
+}
+
 function Page () {
 	// TODO: use fetched content and modules to render page
 	// TODO: render left nav
 	// TODO: render right nav
+	const { draft, isLeftNavExpanded, isEditing, isChanged } = state;
 
-	const sequence = stew(() => {
+	// CORRECTION: this doesn't need to fetch data for each layer
+	// - the lowest one holds the data for all
+	// - the schema of all the other levels just define their requirements
+	//   - schema should only build based on what was expected that hasn't already been set by its children maybe?
+	// - JSON for higher levels serve as example data to test the feature if you want
+	const files = [...stew(() => {
 		const names = pathname.slice(1).split('/');
 		const promises = [];
 		let path = '';
@@ -152,30 +238,39 @@ function Page () {
 			path += `/${names.shift()}`;
 
 			if (promises.length) {
-				promises.push(fetch(`${path}.json`).then(res => res.json()));
+				promises.push(fetchFile(`${path}.json`).then(res => res.json()));
 			}
 
 			promises.push(names.length
-				? import(`${path}.mjs`)
-				: fetch(`${path}.md`).then(res => res.text()).then(text => parseMD(text))
+				? importFile(`${path}.mjs`)
+				: fetchFile(`${path}.md`).then(res => res.text())
 			);
 		}
 
 		return Promise.all(promises);
-	}, [], null);
+	}, [], [])];
 
-	if (!sequence) {
+	if (!files.length) {
 		return;
 	}
-
+	
+	let file = files.pop();
+	const data = files[files.length - 1];
+	const editRef = [];
 	const resources = [];
 	const schemas = [];
-	let content = sequence.pop();
-	const data = sequence[sequence.length - 1];
+	
+	if (draft) {
+		file = draft;
+	}
+
+	let content = stew(() => {
+		return parseMD(file);
+	}, [file]);
 
 	// maybe it would work better to have sequence in reverse order
-	while (sequence.length) {
-		const [module, data] = sequence.splice(-2);
+	while (files.length > 1) {
+		const [module, data] = files.splice(-2);
 		const [Component, schema, styles, ...urls] = module.default;
 		const cssUrls = urls.filter(url => url.endsWith('.css'));
 		const jsUrls = urls.filter(url => /\.m?js$/.test(url));
@@ -193,19 +288,79 @@ function Page () {
 		content = Component(data, content);
 	}
 
-
+	const leftButtonClassName = `expand-left ${!isLeftNavExpanded ? 'toggle-off' : ''}`;
 	const schema = Object.assign({}, ...schemas);
 	const styles = document.querySelector('#styles').textContent;
 	resources.unshift(['style', {}, styles]);
 
 	return ['', {},
 		// TODO: toggle between left nav and editing mode
-		[Editor, { schema, data }],
-		['div', { className: 'main' },
-			['template', { shadowrootmode: 'open' },
-				['', {},
-					...resources,
-					content,
+		isEditing
+			? [Editor, { schema, data, file, editRef }]
+			: isLeftNavExpanded && [LeftMenu],
+		['div', {
+			className: 'main',
+		},
+			!isEditing
+				? ['button', {
+					className: leftButtonClassName,
+					onclick: () => {
+						state.isLeftNavExpanded = !isLeftNavExpanded;
+					},
+				}, '≡']
+				: isChanged
+					? ['button', {
+						className: leftButtonClassName,
+						onclick: () => {
+							const [editInput] = editRef;
+							
+							Object.assign(state, {
+								draft: editInput.value === files[pathname] ? null : editInput.value,
+								isChanged: false,
+							});
+						},
+					}, '👁']
+					// TODO: only show this if draft has been previewed and there are changes from what is currently saved
+					// - maybe show delete button if draft is '' instead of null
+					: ['button', {
+						className: leftButtonClassName,
+						onclick: () => {
+							const [editInput] = editRef;
+							const text = editInput.value;
+							updateFile(pathname, text, 'md');
+							storeSession();
+						},
+					}, '🖫'],
+				// TODO: have separate 'reset' and 'delete' button
+				!isEditing
+					? ['button', {
+						className: 'expand-right',
+						onclick: () => {
+							state.isEditing = true;
+						},
+					}, '✎']
+					: isChanged
+						? ['button', {
+							className: 'expand-right',
+							onclick: () => {
+								Object.assign(state, {
+									draft: null,
+									isChanged: false,
+								});
+							},
+						}, '🗑︎'] // TODO: change this to cancel symbol (circle with slash)
+						: ['button', {
+							className: 'expand-right',
+							onclick: () => {
+								state.isEditing = false;
+							},
+						}, '✕'],
+			['div', {},
+				['template', { shadowrootmode: 'open' },
+					['', {},
+						...resources,
+						content,
+					],
 				],
 			],
 		],
