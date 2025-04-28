@@ -29,8 +29,21 @@ function send (res, content, type = types.txt) {
 	let status = 200;
 
 	if (!(content instanceof Buffer) && typeof content !== 'string') {
-		status = 404;
-		content = 'Not found';
+		switch (type) {
+			case 'text/plain': {
+				content = '';
+				break;
+			}
+			case 'application/json': {
+				content = '{}';
+				break;
+			}
+			default: {
+				status = 404;
+				content = 'Not found';
+				break;
+			}
+		}
 	}
 
 	res.writeHead(status, {

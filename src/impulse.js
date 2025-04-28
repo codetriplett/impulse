@@ -1,12 +1,12 @@
-import { Parser } from 'acorn';
-import jsx from 'acorn-jsx';
+// import { Parser } from 'acorn';
+// import jsx from 'acorn-jsx';
 
-const jsxExt = jsx();
+// const jsxExt = jsx();
 
-const options = {
-	ecmaVersion: 'latest',
-	sourceType: 'module',
-};
+// const options = {
+// 	ecmaVersion: 'latest',
+// 	sourceType: 'module',
+// };
 
 function mapNode (text) {
 	const references = text.match(/\[.*?\]: +.*/g) || [];
@@ -72,19 +72,19 @@ function mapNode (text) {
 }
 
 function parseJS (text) {
-	const { body } = Parser.extend(jsxExt).parse(text, options);
+	// const { body } = Parser.extend(jsxExt).parse(text, options);
 	const imports = {};
-	const refs = {};
-	const rootPath = `/${folders.join('/')}`;
+	// const refs = {};
+	// const rootPath = `/${folders.join('/')}`;
 
-	console.log(body);
+	// console.log(body);
 
 	return imports;
 }
 
 export function parse (text, type) {
 	switch (type) {
-		case 'js': return parseJS(text);
+		// case 'js': return parseJS(text);
 		case 'md': return mapNode(text);
 	}
 }

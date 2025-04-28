@@ -1,69 +1,69 @@
 import { parse as mapNodetoAST } from '@textlint/markdown-to-ast';
-import { parse as parseJStoAST } from 'acorn';
+// import { parse as parseJStoAST } from 'acorn';
 import { getObject } from './common';
 
-const options = {
-	ecmaVersion: 'latest',
-	sourceType: 'module',
-};
+// const options = {
+// 	ecmaVersion: 'latest',
+// 	sourceType: 'module',
+// };
 
-export function parseJS (text) {
-	const { body } = parseJStoAST(text, options);
-	const imports = {};
-	const importRefs = {};
+// export function parseJS (text) {
+// 	const { body } = parseJStoAST(text, options);
+// 	const imports = {};
+// 	const importRefs = {};
 
-	for (const node of body) {
-		const { start, end, type } = node;
+// 	for (const node of body) {
+// 		const { start, end, type } = node;
 
-		// TODO: need to include for and if defintions as locals
-		// - these should be shown when focusing a line within them
-		// - an if ref that references another if ref, means it's an else if
+// 		// TODO: need to include for and if defintions as locals
+// 		// - these should be shown when focusing a line within them
+// 		// - an if ref that references another if ref, means it's an else if
 
-		switch (type) {
-			case 'ImportDeclaration': {
-				const { specifiers, source } = node;
-				const sourceValue = source.value;
-				const importObject = getObject(imports, sourceValue, {});
+// 		switch (type) {
+// 			case 'ImportDeclaration': {
+// 				const { specifiers, source } = node;
+// 				const sourceValue = source.value;
+// 				const importObject = getObject(imports, sourceValue, {});
 
-				for (const node of specifiers) {
-					const { type, local } = node;
-					const localName = local.name;
-					let sourceName;
+// 				for (const node of specifiers) {
+// 					const { type, local } = node;
+// 					const localName = local.name;
+// 					let sourceName;
 					
-					if (type === 'ImportDefaultSpecifier') {
-						sourceName = 'default';
-					}
+// 					if (type === 'ImportDefaultSpecifier') {
+// 						sourceName = 'default';
+// 					}
 
-					const importArray = getObject(importObject, sourceName, []);
-					importRefs[localName] = importArray;
-				}
+// 					const importArray = getObject(importObject, sourceName, []);
+// 					importRefs[localName] = importArray;
+// 				}
 
-				break;
-			}
-			case 'ExportNamedDeclaration': {
-				const { declaration } = node;
-				const { type } = declaration;
+// 				break;
+// 			}
+// 			case 'ExportNamedDeclaration': {
+// 				const { declaration } = node;
+// 				const { type } = declaration;
 
-				switch (type) {
-					case 'VariableDeclaration': {
-						const { declarations } = declaration;
-						break;
-					}
-				}
+// 				switch (type) {
+// 					case 'VariableDeclaration': {
+// 						const { declarations } = declaration;
+// 						break;
+// 					}
+// 				}
 
-				break;
-			}
-			default: {
-				console.log('========', type);
-				break;
-			}
-		}
-	}
+// 				break;
+// 			}
+// 			default: {
+// 				console.log('========', type);
+// 				break;
+// 			}
+// 		}
+// 	}
 
-	console.log(imports);
+// 	console.log(imports);
 
-	return imports;
-}
+// 	return imports;
+// }
 
 function processId (props, elements, ids) {
 	const suffix = elements[elements.length - 1];
@@ -757,9 +757,9 @@ export function extractBlocks (text, node) {
 // - onParse and onRender can also be added to modify the default results from here
 export function parse (text, type, vars) {
 	switch (type) {
-		case 'js': {
-			return parseJS(text);
-		}
+		// case 'js': {
+		// 	return parseJS(text);
+		// }
 		case 'md': {
 			const layout = parseMD(text);
 			return mapNode(layout, text.length, vars);

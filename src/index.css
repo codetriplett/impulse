@@ -181,10 +181,6 @@ body {
 .editor:focus {
 	outline: none;
 }
-.form,
-.editor {
-	margin-top: 15px;
-}
 .template:not(.template-focused) {
 	height: 19px;
 }
@@ -194,7 +190,9 @@ body {
 
 
 
-.form {
+
+
+.edit {
 	display: flex;
 	gap: 16px;
 	flex-direction: column;
