@@ -12,6 +12,7 @@ export const state = stew({
 	files: {},
 	map: {},
 	templates: {},
+	settings: {},
 	hash,
 	path: `${pathname}${hash || '#'}`,
 	snips: [],
@@ -269,9 +270,28 @@ function getMentions (path, depthMap = {}, depth = 0, rootPath) {
 	return depthMap;
 }
 
+// TODO: give overview here
+// - also show list of files that have drafts
 function HomePage () {
-	return ['p', {}, 'Home Page'];
+	const { settings } = state;
+	const { theme = 'dark' } = settings;
+
+	stew(null, [theme], () => {
+		document.body.className = `${theme}-theme`;
+	});
+
+	return ['', {},
+		['button', {
+			type: 'button',
+			onclick: () => {
+				const newTheme = theme === 'dark' ? 'light' : 'dark';
+				state.settings = { ...settings, theme: newTheme };
+				window.localStorage.setItem('impulse:settings', JSON.stringify(state.settings));
+			},
+		}, 'switch to ', theme === 'dark' ? 'light' : 'dark', ' mode'],
+	];
 }
+
 function convertValue (type, value, checked) {
 	switch (type) {
 		case 'checkbox': {
@@ -353,7 +373,17 @@ function Editor ({ formRef, schema, data, file }) {
 			ref: formRef,
 			className: 'editor',
 			placeholder: '(empty)',
-			onkeydown: () => {
+			onkeydown: event => {
+				const { key } = event;
+
+				if (key === 'Tab') {
+					event.preventDefault();
+					const [, textarea] = formRef;
+					const { value, selectionStart, selectionEnd } = textarea;
+					textarea.value = `${value.slice(0, selectionStart)}\t${value.slice(selectionEnd)}`;
+					textarea.selectionStart = textarea.selectionEnd = selectionStart + 1;
+				}
+
 				resizeTextarea(formRef);
 				state.isChanged = true;
 			},
@@ -463,7 +493,7 @@ function Citation ({ hashPath }) {
 		const [range] = info.split(/[:# ]/);
 		const [start, finish] = range.split('-');
 		const file = files[path];
-		const layout = parseMD(file);
+		const layout = parseMD(file, path);
 		scopeLayout(layout, start, finish);
 		return layout;
 	}, [hashPath]);
@@ -557,31 +587,28 @@ function LeftMenu ({ manifest, hashPath, snips }) {
 }
 
 function RightMenu () {
-	const { snips } = state;
+	const { hash, snips } = state;
+	const activeHashPath = `${pathname}${hash}`;
 
-	if (!snips.length) {
+	// TODO: see why stew doesn't reconcile this properly
+	// - something about it being at the end of the array of children
+	if (!snips.length || snips.length === 1 && snips[0] === activeHashPath) {
 		return;
 	}
 
 	return ['ul', {
 		className: 'snips',
 	},
-		...snips.map(hashPath => [Citation, { hashPath }]),
+		...snips.map(hashPath => hashPath !== activeHashPath && [Citation, { hashPath }]),
 	];
 }
 
 function Page () {
-	// TODO: use fetched content and modules to render page
-	// TODO: render left nav
-	// TODO: render right nav
 	const { hash, draftData, draft, snips, isLeftNavExpanded, isEditing, isChanged } = state;
 	const hashPath = `${pathname}${hash}`;
 
-	// CORRECTION: this doesn't need to fetch data for each layer
-	// - the lowest one holds the data for all
-	// - the schema of all the other levels just define their requirements
-	//   - schema should only build based on what was expected that hasn't already been set by its children maybe?
-	// - JSON for higher levels serve as example data to test the feature if you want
+	// TODO: allow breaking of component chain by having two slashes
+	// - e.g. /site/category//info -> uses /site/category/info as the root instead of /site
 	const files = [...stew(() => {
 		const names = pathname.slice(1).split('/');
 		const promises = [];
@@ -740,31 +767,7 @@ function Page () {
 if (typeof window !== 'undefined') {
 	recallSession().then(() => {
 		const { theme = 'dark' } = state.settings;
-		const root = document.querySelector(':root');
-	
-		switch (theme) {
-			case 'dark': {
-				root.style.setProperty('--page-background', '#333');
-				root.style.setProperty('--paper-background', '#222');
-				root.style.setProperty('--paper-shadow', '#111');
-				root.style.setProperty('--paper-font-color', '#ccc');
-				root.style.setProperty('--paper-inactive-background', '#333');
-				root.style.setProperty('--button-background', '#444');
-				root.style.setProperty('--button-border-color', '#555');
-				root.style.setProperty('--button-font-color', '#777');
-				root.style.setProperty('--button-hover-background', '#555');
-				root.style.setProperty('--button-hover-border-color', '#666');
-				root.style.setProperty('--button-hover-font-color', '#777');
-				root.style.setProperty('--navigation-font-color', '#ccc');
-				root.style.setProperty('--reference-font-color', '#999');
-				root.style.setProperty('--reference-active-background', '#555');
-				root.style.setProperty('--divider-color', '#777');
-				root.style.setProperty('--link-font-color', '#4b4bde');
-				root.style.setProperty('--link-visited-font-color', '#8d54c1');
-				break;
-			}
-		}
-
+		document.body.className = `${theme}-theme`;
 		// TODO: have object be for props instead of context
 		// - context can be set by wrapping children fragment
 		// - '' prop can still be used to set a converter function
