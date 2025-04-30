@@ -61,6 +61,9 @@ function updateFile (path, text, type) {
 }
 
 const defaultFilePaths = [
+	'/markdown.md',
+	'/javascript.md',
+	'/webgl.md',
 	'/site.md',
 	'/site/category.md',
 	'/site/category.json',
@@ -280,15 +283,28 @@ function HomePage () {
 		document.body.className = `${theme}-theme`;
 	});
 
-	return ['', {},
+	return ['div', {
+		className: 'main',
+	},
 		['button', {
 			type: 'button',
+			style: {
+				position: 'absolute',
+				right: '15px',
+			},
 			onclick: () => {
 				const newTheme = theme === 'dark' ? 'light' : 'dark';
 				state.settings = { ...settings, theme: newTheme };
 				window.localStorage.setItem('impulse:settings', JSON.stringify(state.settings));
 			},
 		}, 'switch to ', theme === 'dark' ? 'light' : 'dark', ' mode'],
+		[1, {}, 'Bring Your Notes to Life'],
+		['p', {},
+			'At its core, this is a simple note-taking tool that allows you to create links between notes for easy exploration. Notes are formatted in Markdown, which is a common and straightforward format that offers great portability. This tool extends that to support blocks of code that can wrap your notes in interective elements to create websites, or even 3d graphics. Even if you have no coding experience, this tool can serve as an entry point to learn those skills, without needing to learn complex build systems.',
+		],
+		['small', {},
+			'All notes are stored locally in your browser. Everything here is a work in progress, but feel free to try it out for yourself.',
+		],
 	];
 }
 
@@ -315,10 +331,6 @@ function resizeTextarea (ref) {
 
 function processForm (form) {
 	const data = {};
-
-	if (!form.checkValidity()) {
-		return;
-	}
 
 	for (const input of form.elements) {
 		const { type, id, value, checked, placeholder } = input;
@@ -603,6 +615,23 @@ function RightMenu () {
 	];
 }
 
+/*
+
+phase 2
+
+/modules/content : wraps content in parent components
+/modules : presents in documentation mode (interactive code blocks)
+
+//modules/content : just renders content on its own
+//modules/content//content2 : renders content in side-by-side grid, without wrapping in parent components
+/modules/content//content2 : renders content in side-by-side grid, with wrapping in parent components
+/modules/content///other : extra slashes backtrack (so second file is found at /modules/other instead of /modules/content/other)
+
+/modules/content/ : same as without slash (it's common for people to add this intentionally)
+/modules/content// : eliminates modules from left side for each extra slash (still need to add styles and resources, but not wrapped in component)
+
+*/
+
 function Page () {
 	const { hash, draftData, draft, snips, isLeftNavExpanded, isEditing, isChanged } = state;
 	const hashPath = `${pathname}${hash}`;
@@ -704,6 +733,10 @@ function Page () {
 						onclick: () => {
 							const [form, textarea] = formRef;
 							
+							if (!form.reportValidity()) {
+								return null;
+							}
+
 							Object.assign(state, {
 								draftData: processForm(form),
 								draft: textarea.value === files[pathname] ? null : textarea.value,

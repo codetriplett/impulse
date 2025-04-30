@@ -488,7 +488,7 @@ export function mapNode (layout, prevStart, vars) {
 			const blockStart = Number(blockRange.slice(1).split('-')[0]);
 			const schemaStart = value.indexOf('{');
 			// TODO: parse this properly instead of relying on it to have perfect formatting
-			const schemaFinish = value.search(/\}\r?\n/, schemaStart);
+			const schemaFinish = value.search(/^\}/m, schemaStart);
 			blockRange += `:${blockStart + (schemaStart === -1 ? 0 : schemaStart)}-${blockStart + (schemaFinish === -1 ? value.length : schemaFinish + 1)}`;
 		}
 
