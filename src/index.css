@@ -212,10 +212,27 @@ body.dark-theme {
 
 
 
-.edit {
+.edit ul {
 	display: flex;
-	gap: 16px;
+	gap: 10px;
 	flex-direction: column;
+	padding: 10px 0 0 15px;
+	border-left: 1px solid var(--paper-font-color);
+}
+.edit > ul {
+	margin: -10px 0 15px;
+	padding-left: 0;
+	border-left: none;
+}
+label input:not([type="checkbox"]),
+label select {
+    display: block;
+    margin-top: 5px;
+    width: 100%;
+}
+label input[type="checkbox"] {
+	float: left;
+	margin-right: 5px;
 }
 
 .project-name {

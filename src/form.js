@@ -77,6 +77,74 @@ export function findOption (value, ...options) {
 	return options.indexOf(option);
 }
 
+function BooleanSelect ({ label, placeholder, value, inputs }, ...options) {
+	const state = stew(() => {
+		return stew({ index: findOption(value, ...inputs) });
+	}, []);
+
+	const { index } = state;
+
+	for (const [i, option] of options.entries()) {
+		option[1].selected = i === index;
+	}
+
+	return ['label', {},
+		label,
+		['select', {
+			onchange: event => {
+				state.index = event.target.selectedIndex - 1;
+			}
+		},
+			['option', {
+				selected: index === -1,
+			}, placeholder || 'Select item...'],
+			...options,
+		],
+		inputs[index],
+	];
+}
+
+function RangeSelect ({ label, placeholder, value, inputs, rest }, ...options) {
+	const state = stew(() => {
+		return stew({ array: Array.isArray(value) ? value : [] });
+	}, []);
+
+	const { array } = state;
+
+	return ['label', {},
+		label,
+		['ol', {},
+			...array.entries().map((value, i) => {
+				// TODO: handle cases where index is -1 (invalid items)
+				const index = findOption(value, ...inputs);
+				return ['li', {}, FormField(rest[index], value, ...names, i)];
+			}),
+		],
+		['select', {
+			onchange: event => {
+				console.log('==== insert new item', event.target.selectedIndex - 1);
+				// const newInput = inputs[selectedIndex - 1];
+				// select[2][1].selected = true;
+		
+				// if (!newInput) {
+				// 	return;
+				// }
+		
+				// const clonedInput = [...newInput];
+				// clonedInput[1] = { ...clonedInput[1] };
+				// clonedInput[1].id += `[${list.length - 2}]`;
+				// list.push(['li', {}, clonedInput]);
+				event.target.selectedIndex = 0;
+			}
+		},
+			['option', {
+				selected: true,
+			}, placeholder || 'Add item...'],
+			...options,
+		],
+	];
+}
+
 function FormSelect (definition, value, ...names) {
 	const [first, ...rest] = definition;
 	const field = FormField(first, undefined, ...names);
@@ -84,98 +152,40 @@ function FormSelect (definition, value, ...names) {
 
 	if (!field.length) {
 		return [];
-	} else if (field[1][0] === 'label') {
-		field.reverse();
 	}
 
 	const options = rest.map(definition => {
-		const [label, input] = FormField(definition, undefined, ...names);
+		const label = FormField(definition, undefined, ...names);
+		const input = label.find(child => child[0] === 'input');
 		inputs.push(input);
 		return ['option', {}, label[2]];
 	});
 
-	const [label, input] = field;
+	const label = field[2];
+	const [input] = field.splice(3, 1);
 	const { type, placeholder } = input[1];
 	const selectProps = {};
 	const select = ['select', selectProps, ...options];
-	delete label[1].for;
+	delete field[1].for;
 
 	switch (type) {
 		case 'checkbox': {
-			const index = findOption(value, ...inputs);
-			let input = ['', {}];
-			const option = ['option', {}, placeholder || 'Select item...'];
-			select.splice(2, 0, option);
-
-			selectProps.onchange = ({ selectedIndex }) => {
-				const newInput = inputs[selectedIndex - 1] || ['', {}];
-				const newInputProps = newInput[1];
-				const { value, disabled } = newInputProps;
-
-				if (disabled) {
-					newInputProps.value = value;
-				} else {
-					delete newInputProps.value;
-				}
-
-				input.splice(0, 3, ...newInput);
-			};
-
-			if (index !== -1) {
-				input = inputs[index];
-				input[1].value = value;
-				options[index][1].selected = true;
-			}
-
-			return [label, select, input];
+			return [BooleanSelect, { label, placeholder, value, inputs }, ...options];
 		}
 		case 'number':
 		case 'range': {
-			const array = Array.isArray(value) ? value : [];
-			const list = ['ol', {}];
-			const option = ['option', {}, placeholder || 'Add item...'];
-			select.splice(2, 0, option);
-			label[1] = {};
-			
-			selectProps.onchange = ({ selectedIndex }) => {
-				const newInput = inputs[selectedIndex - 1];
-				select[2][1].selected = true;
-
-				if (!newInput) {
-					return;
-				}
-
-				const clonedInput = [...newInput];
-				clonedInput[1] = { ...clonedInput[1] };
-				clonedInput[1].id += `[${list.length - 2}]`;
-				list.push(['li', {}, clonedInput]);
-			};
-
-			for (const [i, value] of array.entries()) {
-				const index = findOption(value, ...inputs);
-				const item = ['li', {}];
-
-				if (index === -1) {
-					item[2] = 'Invalid Item';
-				} else {
-					const field = FormField(rest[index], value, ...names, i);
-					item[2] = field[field[0][0] === 'label' ? 1 : 0];
-				}
-
-				list.push(item);
-			}
-
-			return [label, list, select];
+			return [RangeSelect, { label, placeholder, value, inputs, rest }, ...options];
 		}
 	}
 
+	// TODO: create PropertySelect impulse for this
 	const object = typeof value === 'object' && !Array.isArray(value) ? value : {};
 	const list = ['ul', {}];
 	const option = ['option', {}, placeholder || 'Add property...'];
 	select.splice(2, 0, option);
 	delete input[1].id;
 	delete input[1].placeholder;
-	label[1] = {};
+	field[1] = {};
 			
 	selectProps.onchange = ({ selectedIndex }) => {
 		const name = input[1].value;
@@ -202,35 +212,35 @@ function FormSelect (definition, value, ...names) {
 			item[2] = 'Invalid Item';
 		} else {
 			const field = FormField(rest[index], value, ...names, name);
+			const [input] = field.splice(2, 1);
 
-			if (field[1][0] === 'label') {
-				field.reverse();
-			}
-
-			const [label, input] = field;
-			label[2] = name;
-			item[2] = label;
+			field[2] = name;
+			item[2] = field;
 			item[3] = input;
 		}
 
 		list.push(item);
 	}
 
-	return [label, list, input, select];
+	field.push(list, input, select);
+	return field;
 }
 
+// TODO: maybe only run this the first time to create inputs, not whenever an update is triggered in form
+// - should only need to run it initially, and whenever a select box adds new fields to the data
 export function FormField (definition, value, ...names) {
 	if (Array.isArray(definition)) {
 		return FormSelect(definition, value, ...names);
 	} else if (typeof definition === 'object') {
+		const { '': name = names[names.length - 1], ...props } = definition;
 		const object = typeof value === 'object' && !Array.isArray(value) ? value : {};
-		const elements = [];
+		const list = ['ul', {}];
 
-		for (const [name, value] of Object.entries(definition)) {
-			elements.push(...FormField(value, object[name], ...names, name));
+		for (const [name, value] of Object.entries(props)) {
+			list.push(FormField(value, object[name], ...names, name));
 		}
 
-		return elements;
+		return names.length ? ['label', {}, name, list] : list;
 	}
 
 	let match = definition.match(/^\s*(?:([^*]+?)\s+)?(\**)(\S*?)\/(.*?)(?:\/([^/]*?))?(?:\/([^/]*?))?(\**)(?:\s+(.+))?\s*$/);
@@ -291,16 +301,21 @@ export function FormField (definition, value, ...names) {
 			props.checked = true;
 		}
 
-		return [input, label];
+		label.push(input);
+		return label;
 	} else if ((value || value === 0) && typeof value !== 'object') {
 		if (type === 'textarea') {
 			input[2] = String(value);
 		} else if (type !== 'checkbox') {
-			props.value = String(value);
+			const element = document.getElementById(id);
+			props.value = element?.value || String(value);
 		}
 	}
 
 	if (path) {
+		// TODO: maybe render this as select
+		// - it would need to fetch all JSON files in the given folder
+		// - what URL pattern can be used to fetch files in folder server-side
 		props.dataset = { path: `/${path}/` };
 	}
 
@@ -324,5 +339,6 @@ export function FormField (definition, value, ...names) {
 		}
 	}
 
-	return [label, input];
+	label.push(input);
+	return label;
 }

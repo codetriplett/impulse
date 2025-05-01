@@ -34,65 +34,12 @@
 			}
 		</style>
 		<script>
-			(function () {
-				const modules = {};
-				let moduleExports = {};
-				let moduleName, moduleSections;
-				window.exports = moduleExports;
-
-				window.module = Object.defineProperties({}, {
-					name: {
-						set: name => {
-							moduleExports = {};
-							modules[name] = moduleExports;
-							window.exports = moduleExports;
-							moduleName = name;
-							moduleSections = name.split('/');
-						},
-					},
-					exports: {
-						set: exports => {
-							modules[moduleName] = typeof exports === 'object' ? exports : { default: exports };
-						},
-						get: () => {
-							return moduleExports;
-						},
-					},
-				});
-
-				window.require = name => {
-					if (!name.startsWith('.')) {
-						return modules[name];
-					} else if (name === '.') {
-						return modules['/'];
-					}
-
-					const sections = name.replace(/^.\//, '').split('/');
-					const sourcePath = moduleSections.length < 2 ? [...moduleSections] : moduleSections.slice(0, -1);
-
-					while (sections[0] === '..') {
-						sections.shift();
-						sourcePath.pop();
-					}
-
-					sourcePath.push(...sections);
-					modules[sourcePath.join('/')];
-				};
-			})();
+			window.module = {};
 		</script>
 	</head>
 	<body>
 		<div id="app"></div>
-		<script>
-			window.module.name = '@triplett/stew';
-		</script>
 		<script src="/stew.min.js"></script>
-		<script>
-			window.module.exports = { default: window.stew, ...window.stew };
-		</script>
-		<script>
-			window.module.name = '/index';
-		</script>
 		<script src="/index.min.js" module></script>
 	</body>
 </html>

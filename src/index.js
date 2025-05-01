@@ -3,6 +3,7 @@ import { updateNode } from './map';
 import { getObject } from './common';
 import { parseMD, extractTemplate, extractBlocks } from './parse';
 import { FormField } from './form';
+import { localStorage } from './storage';
 
 const { pathname, hash } = window.location;
 
@@ -77,17 +78,17 @@ export async function recallSession () {
 	let files, map, templates, snips, settings;
 
 	try {
-		files = JSON.parse(window.localStorage.getItem('impulse:files'));
-		map = JSON.parse(window.localStorage.getItem('impulse:map'));
-		// templates = JSON.parse(window.localStorage.getItem('impulse:templates'));
-		snips = JSON.parse(window.localStorage.getItem('impulse:snips') || '[]');
-		settings = JSON.parse(window.localStorage.getItem('impulse:settings') || '{}');
+		files = JSON.parse(localStorage.getItem('files'));
+		map = JSON.parse(localStorage.getItem('map'));
+		// templates = JSON.parse(storage.getItem('templates'));
+		snips = JSON.parse(localStorage.getItem('snips') || '[]');
+		settings = JSON.parse(localStorage.getItem('settings') || '{}');
 	} catch (err) {
-		window.localStorage.removeItem('impulse:files');
-		window.localStorage.removeItem('impulse:map');
-		window.localStorage.removeItem('impulse:templates');
-		window.localStorage.removeItem('impulse:snips');
-		window.localStorage.removeItem('impulse:settings');
+		localStorage.removeItem('files');
+		localStorage.removeItem('map');
+		localStorage.removeItem('templates');
+		localStorage.removeItem('snips');
+		localStorage.removeItem('settings');
 		snips = [];
 		settings = {};
 	}
@@ -107,7 +108,7 @@ export async function recallSession () {
 			files[path.replace(/\.md$/, '')] = file;
 		}));
 
-		window.localStorage.setItem('impulse:files', JSON.stringify(files));
+		localStorage.setItem('files', JSON.stringify(files));
 	}
 
 	if (!map || !templates) {
@@ -130,18 +131,18 @@ export async function recallSession () {
 			updateFile(path, text, 'md');
 		}
 
-		window.localStorage.setItem('impulse:map', JSON.stringify(map));
-		window.localStorage.setItem('impulse:templates', JSON.stringify(templates));
+		localStorage.setItem('map', JSON.stringify(map));
+		localStorage.setItem('templates', JSON.stringify(templates));
 	}
 }
 
 export function storeSession () {
 	const { files, map, templates, snips } = state;
-	window.localStorage.removeItem('impulse:map'); // in case the localStorage limit is reached
-	window.localStorage.setItem('impulse:files', JSON.stringify(files));
-	window.localStorage.setItem('impulse:map', JSON.stringify(map));
-	window.localStorage.setItem('impulse:templates', JSON.stringify(templates));
-	window.localStorage.setItem('impulse:snips', JSON.stringify(snips));
+	localStorage.removeItem('map'); // in case the localStorage limit is reached
+	localStorage.setItem('files', JSON.stringify(files));
+	localStorage.setItem('map', JSON.stringify(map));
+	localStorage.setItem('templates', JSON.stringify(templates));
+	localStorage.setItem('snips', JSON.stringify(snips));
 }
 
 // show all locals first, regardless of whether they export
@@ -295,7 +296,7 @@ function HomePage () {
 			onclick: () => {
 				const newTheme = theme === 'dark' ? 'light' : 'dark';
 				state.settings = { ...settings, theme: newTheme };
-				window.localStorage.setItem('impulse:settings', JSON.stringify(state.settings));
+				localStorage.setItem('settings', JSON.stringify(state.settings));
 			},
 		}, 'switch to ', theme === 'dark' ? 'light' : 'dark', ' mode'],
 		[1, {}, 'Bring Your Notes to Life'],
@@ -379,8 +380,9 @@ function Editor ({ formRef, schema, data, file }) {
 	return ['form', {
 		ref: formRef,
 		className: 'edit',
+		onkeyup: () => state.isChanged = true,
 	},
-		...FormField(schema, data),
+		FormField(schema, data),
 		['textarea', {
 			ref: formRef,
 			className: 'editor',

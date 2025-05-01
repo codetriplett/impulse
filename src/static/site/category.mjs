@@ -6,6 +6,24 @@ export const category = function ({ page }, content) {
 };
 export default [category, {
 	page: '// Page',
+	boolean: 'Boolean',
+	number: '/3 Number',
+	string: '// String',
+	object: {
+		boolean: 'Boolean',
+		number: '/3 Number',
+		string: '// String',
+	},
+	select: ['Select',
+		'Boolean',
+		'/3 Number',
+		'// String',
+	],
+	array: ['/3 Array',
+		'Boolean',
+		'/3 Number',
+		'// String',
+	],
 
 	// boolean: '* Boolean',
 	// number: '/2..4* Number',
