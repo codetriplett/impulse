@@ -150,6 +150,21 @@ describe('parse', () => {
 			],
 		]);
 	});
+	
+	it.skip('list nested', () => {
+		const actual = parse('- Item\n  - Child');
+
+		expect(actual).toEqual(['', {},
+			['ul', {},
+				['li', { '': 0 },
+					'Item',
+					['ul', {},
+						['li', { '': 0 }, 'Child'],
+					],
+				],
+			],
+		]);
+	});
 });
 
 // statements: line prefix

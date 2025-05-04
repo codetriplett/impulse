@@ -8,24 +8,63 @@ function parseInline (text) {
 }
 
 export default function parse (string) {
-	const lines = string.split(/(?=\n {0,3}(?:[^ ]|$))/);
-	const fragment = ['', {}];
-	let length = 0;
-	let newlineCount = 0;
-	let isListSpaced = false;
-	let paragraph, preformatted, list;
+	const lines = string.split('\n');
+	const stack = [[0, ['', {}]]];
+	const inlines = new Set();
+	let length = -1;
+	let newlines = 0;
+	let spaced = false;
+	let previous;
 
-	for (const line of lines) {
-		const match = line.match(/(\n?(?: {0,3}(?! ))?)(?:(-|\d+[.)]) {1,4})?(#{1,6}(?= )|(?:=+|-+)(?= *$)| {4,}|\t|`{3,})?\s*(.*)\s*/);
-		const [, newline, bullet = '', command = '', text] = match;
-		const isPreformatted = /[ \t]/.test(command);
-		const content = text && !isPreformatted ? parseInline(text) : [];
-		const index = length + match.index + newline.length;
-		let node;
-		length += line.length;
+	for (let line of lines) {
+		let padding = line.match(/[ \t]*/)[0];
+		length += padding.length + 1;
 
-		// - overwrite text varaible with new content
-		// - or maybe store to content array that is spread onto parent
+		if (padding === line) {
+			newlines += 1;
+			continue;
+		}
+		
+		padding = padding.replace('\t', '    ');
+		let whitespace = padding.length;
+		let container;
+
+		if (newlines > 1) {
+			stack.splice(1);
+			[, container] = stack[0];
+		} else {
+			for (const [i, [indentation, node]] of stack.entries()) {
+				if (whitespace < indentation) {
+					stack.splice(i);
+					break;
+				}
+
+				container = node;
+				whitespace -= indentation;	
+			}
+		}
+
+		if (whitespace > 3) {
+			const indentation = line[0] === '\t' ? 1 : 4;
+			line = line.slice(indentation);
+			length -= indentation;
+
+			if (previous?.[0] === 'code') {
+				previous[2] += `\n${line}`;
+			} else {
+				const node = ['code', {}, line];
+				container.push(['pre', { '': length }, node]);
+				previous = node;
+			}
+
+			continue;
+		}
+
+		line = line.slice(padding.length);
+		const match = line.match(/(?:(-|\d+[.)]) {1,4})?(#{1,6}(?= )|(?:=+|-+)(?= *$)| {4,}|\t|`{3,})?\s*(.*)\s*/);
+		const [, bullet = '', command = '', text] = match;
+		const content = parseInline(text);
+		let node, wrapper;
 
 		switch (command[0]) {
 			case '#': {
@@ -33,9 +72,8 @@ export default function parse (string) {
 				break;
 			}
 			case '=': {
-				if (paragraph) {
-					paragraph[0] = 1;
-					paragraph = undefined;
+				if (previous?.[0] === 'p') {
+					previous[0] = 1;
 					continue;
 				}
 
@@ -43,9 +81,8 @@ export default function parse (string) {
 				break;
 			}
 			case '-': {
-				if (paragraph) {
-					paragraph[0] = 2;
-					paragraph = undefined;
+				if (previous?.[0] === 'p') {
+					previous[0] = 2;
 					continue;
 				}
 
@@ -54,78 +91,71 @@ export default function parse (string) {
 			}
 		}
 
-		if (isPreformatted) {
-			if (!preformatted || bullet) {
-				node = ['pre',,
-					['code', {}, text],
-				];
+		if (bullet) {
+			// TODO: fix how it checks for first item in list
+			// - tagName here points to the wrapper that holds the lists the bullets are a part of
+			// - it needs to also store the active list being built
+			const list = newlines < 2 ? container[container.length - 1] : undefined;
 
-				preformatted = node;
+			if (bullet === '-' && list?.[0] !== 'ul') {
+				wrapper = ['ul', {}];
+			} else if (bullet !== '-' && list?.[0] !== 'ol') {
+				const start = bullet.slice(0, -1);
+				wrapper = ['ol', start === '1' ? {} : { start }];
 			} else {
-				preformatted[2][2] += `\n${text}`;
+				container = list;
+
+				if (newlines && !spaced) {
+					spaced = true;
+
+					for (const item of container.slice(2)) {
+						if (inlines.has(item[1][''])) {
+							const content = item.splice(2);
+							item.push(['p', {}, ...content]);
+						}
+					}
+				}
 			}
-		} else if (text) {
-			preformatted = undefined;
+
+			if (node) {
+				node = ['li',, node];
+			} else if (spaced) {
+				node = ['li',, ['p', {}, ...content]];
+			} else {
+				node = ['li',, ...content];
+				inlines.add(length);
+			}
+			
+			padding += `${bullet} `;
 		}
 
-		if (bullet) {
-			if (newlineCount === 1 && !isListSpaced) {
-				isListSpaced = true;
-
-				for (const item of list?.slice?.(2)) {
-					const content = item.splice(2);
-					item.push(['p', {}, ...content]);
-				}
-			}
-
-			// li's can have pre (\t, 4 spaces, >)
-			node = ['li', { '': index }, ...(node ? [node] : content)];
-
-			if (isListSpaced) {
-				const content = node.splice(2);
-				node.push(['p', {}, ...content]);
-			}
-
-			if (list) {
-				list.push(node);
-			} else {
-				if (bullet === '-') {
-					list = ['ul', {}, node];
-				} else {
-					const start = bullet.slice(0, -1);
-					list = ['ol', start === '1' ? {} : { start }, node];
-				}
-
-				fragment.push(list);
-			}
-
-			continue;
-		} else if (text) {
-			if (!node) {
-				if (paragraph) {
-					paragraph.push(['br'], ...content);
-				} else if (content.length) {
-					paragraph = ['p', { '': index }, ...content];
-					fragment.push(paragraph);
-				}
-
+		if (!node) {
+			if (previous?.[0] === 'p' && !newlines) {
+				previous.push(['br'], ...content);
 				continue;
 			}
 
-			node[1] = { '': index };
-			fragment.push(node);
-			newlineCount = 0;
-		} else {
-			newlineCount++;
+			node = ['p',, ...content];
 		}
 
-		if (newlineCount !== 1) {
-			list = undefined;
+		if (wrapper) {
+			if (whitespace < 2 && stack.length > 1) {
+				stack.pop();
+				[, container] = stack[stack.length - 1];
+			}
+			
+			stack.push([padding.length, wrapper]);
+			container.push(wrapper);
+			container = wrapper;
 		}
 
-		paragraph = undefined;
-		isListSpaced = false;
+		node[1] = { '': length };
+		container.push(node);
+		length += line.length;
+		previous = node;
+		spaced = false;
+		newlines = 0;
 	}
 
-	return fragment;
+	return stack[0][1];
 }
