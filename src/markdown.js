@@ -14,7 +14,6 @@ export default function parse (string) {
 	let length = -1;
 	let newlines = 0;
 	let spaced = false;
-	let previous;
 
 	for (let line of lines) {
 		let padding = line.match(/[ \t]*/)[0];
@@ -39,9 +38,16 @@ export default function parse (string) {
 					break;
 				}
 
-				container = node;
-				whitespace -= indentation;	
+				whitespace -= indentation;
+				container = node;	
 			}
+		}
+		
+		let previous = container[container.length - 1];
+
+		if (previous?.[0] === 'li') {
+			container = previous;
+			previous = container[container.length - 1];
 		}
 
 		if (whitespace > 3) {
@@ -49,15 +55,19 @@ export default function parse (string) {
 			line = line.slice(indentation);
 			length -= indentation;
 
-			if (previous?.[0] === 'code') {
-				previous[2] += `\n${line}`;
+			if (previous?.[0] === 'pre') {
+				previous[2][2] += `\n${line}`;
 			} else {
-				const node = ['code', {}, line];
-				container.push(['pre', { '': length }, node]);
-				previous = node;
+				container.push(['pre', { '': length },
+					['code', {}, line],
+				]);
 			}
 
 			continue;
+		}
+
+		if (newlines > 1) {
+			previous = undefined;
 		}
 
 		line = line.slice(padding.length);
@@ -92,18 +102,13 @@ export default function parse (string) {
 		}
 
 		if (bullet) {
-			// TODO: fix how it checks for first item in list
-			// - tagName here points to the wrapper that holds the lists the bullets are a part of
-			// - it needs to also store the active list being built
-			const list = newlines < 2 ? container[container.length - 1] : undefined;
-
-			if (bullet === '-' && list?.[0] !== 'ul') {
+			if (bullet === '-' && previous?.[0] !== 'ul') {
 				wrapper = ['ul', {}];
-			} else if (bullet !== '-' && list?.[0] !== 'ol') {
+			} else if (bullet !== '-' && previous?.[0] !== 'ol') {
 				const start = bullet.slice(0, -1);
 				wrapper = ['ol', start === '1' ? {} : { start }];
 			} else {
-				container = list;
+				container = previous;
 
 				if (newlines && !spaced) {
 					spaced = true;
@@ -139,11 +144,6 @@ export default function parse (string) {
 		}
 
 		if (wrapper) {
-			if (whitespace < 2 && stack.length > 1) {
-				stack.pop();
-				[, container] = stack[stack.length - 1];
-			}
-			
 			stack.push([padding.length, wrapper]);
 			container.push(wrapper);
 			container = wrapper;
@@ -152,7 +152,6 @@ export default function parse (string) {
 		node[1] = { '': length };
 		container.push(node);
 		length += line.length;
-		previous = node;
 		spaced = false;
 		newlines = 0;
 	}

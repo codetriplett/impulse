@@ -151,7 +151,7 @@ describe('parse', () => {
 		]);
 	});
 	
-	it.skip('list nested', () => {
+	it('list nested', () => {
 		const actual = parse('- Item\n  - Child');
 
 		expect(actual).toEqual(['', {},
@@ -159,7 +159,7 @@ describe('parse', () => {
 				['li', { '': 0 },
 					'Item',
 					['ul', {},
-						['li', { '': 0 }, 'Child'],
+						['li', { '': 9 }, 'Child'],
 					],
 				],
 			],
