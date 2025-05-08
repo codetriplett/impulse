@@ -1,21 +1,83 @@
 // headings: \n\s{0,3}#{1,6} or \n\s={1,} or \n\s-{1,}
 // list items: \n\s
 
-function parseInline (text) {
-	// TODO: process expressions in text (e.g. bold, strikethrough, ndash, etc)
-	// - return array of children to spread onto parent element
-	return [text];
+function buildPath (rootPath, href = '') {
+	if (!href.startsWith('.')) {
+		return href;
+	} else if (href === '.') {
+		href = './index';
+	}
+
+	const sections = href.replace(/^.\//, '').split('/');
+	const sourcePath = rootPath.slice(0, -1);
+
+	while (sections[0] === '..') {
+		sections.shift();
+		sourcePath.pop();
+	}
+
+	sourcePath.push(...sections);
+	return `/${sourcePath.join('/')}`;
 }
 
-export default function parse (content) {
+export function parseInline (string, rootPath, links) {
+	// TODO: process expressions in text (e.g. bold, strikethrough, ndash, etc)
+	// - return array of children to spread onto parent element
+	const content = [];
+
+	while (string) {
+		const spoilerMatch = string.match(/^\|\|(.*?)\|\|(.*)$/);
+
+		if (spoilerMatch) {
+			const [, spoiler, remainder] = spoilerMatch;
+			content.push(['span', { onclick: {} }, spoiler]);
+			string = remainder;
+			continue;
+		}
+
+		const linkMatch = string.match(/^\[\s*(.*?)\s*\]\s*(?:\(\s*(.*?)\s*(?:['"](.*?)['"])?\s*\)|\[\s*(.*?)\s*\])(.*)$/);
+
+		if (linkMatch) {
+			const [, text, href, title, key, remainder] = linkMatch;
+			const node = ['a',, text];
+			content.push(node);
+			string = remainder;
+
+			if (key) {
+				node[1] = key;
+				links.push(node);
+				continue;
+			}
+
+			const props = { href: buildPath(rootPath, href) };
+			node[1] = props;
+
+			if (title) {
+				props.title = title;
+			}
+
+			continue;
+		}
+
+		content.push(string);
+		break;
+	}
+
+	return content;
+}
+
+export default function parse (content, rootPath) {
 	const lines = content.split('\n');
 	const stack = [[0, ['', {}]]];
 	const inlines = new Set();
+	const references = {};
+	const links = [];
 	let string = '';
 	let index = -1;
 	let newlines = 0;
 	let ticks = 0;
 	let spaced = false;
+	let alignments;
 
 	for (const line of lines) {
 		let padding = line.match(/[ \t]*/)[0];
@@ -84,14 +146,23 @@ export default function parse (content) {
 		}
 
 		string = line.slice(padding.length);
-		const match = string.match(/(?:(-|\d+[.)]) {1,4})?(#{1,6}(?= )|(?:=+|-+)(?= *$)|\|)?\s*(.*)\s*/);
-		const [, bullet = '', command = '', text] = match;
-		const content = parseInline(text);
+		const match = string.match(/^(?:(-|\d+[.)]) {1,4}(?![\s-]+$))?(?:\[\s*(.+?)\s*\]:\s*(.+?)\s*(?:['"](.*?)['"])?\s*$)?(#{1,6}(?= )|(?:=+|-[\s-]*|[+*])(?=\s*$)|\|(?!\|.*?\|\|))?\s*(.*?)\s*$/);
+		const [, bullet = '', key, href, title, command = '', text] = match;
+		const content = parseInline(text, rootPath, links);
 		const nodes = [];
+
+		if (key && !references[key]) {
+			const props = { href: buildPath(rootPath, href) };
+			references[key] = props;
+			
+			if (title) {
+				props.title = title;
+			}
+		}
 
 		switch (command[0]) {
 			case '#': {
-				nodes.unshift([command.length,, ...content]);
+				nodes.unshift([command.length, {}, ...content]);
 				break;
 			}
 			case '=': {
@@ -103,8 +174,10 @@ export default function parse (content) {
 				content.push(command);
 				break;
 			}
-			case '-': {
-				if (previous?.[0] === 'p' && oldlines === 0) {
+			case '-':
+			case '+':
+			case '*': {
+				if (previous?.[0] === 'p' && oldlines === 0 && !/\s/.test(command)) {
 					previous[0] = 2;
 					continue;
 				}
@@ -113,17 +186,44 @@ export default function parse (content) {
 				break;
 			}
 			case '|': {
-				// TODO: process row into current tbody
-				// - convert existing tbody to thead if line is an alignment row and thead doesn't yet exist
-				// - store alignments in a variable for later use
-				const count = 1; // take this from the row properties [count, ...alignments];
-				const cells = text.split('|').slice(0, count).map(text => ['td', {}, text.trim()]);
-				nodes.unshift(['tr',, ...cells]);
+				const string = text.endsWith('|') ? text : `${text}|`;
+
+				if (/^(\s*:?-+:?\s*\|)+$/.test(string)) {
+					const isFirst = !alignments;
+					container = previous?.[2];
+
+					alignments = string.slice(0, -1).split(/\s*\|\s*/).map(string => {
+						return string.endsWith(':') ? string.startsWith(':') ? 'center' : 'right' : '';
+					});
+
+					if (isFirst && container?.[0] === 'tbody' && oldlines === 0) {
+						container[0] = 'thead';
+						previous.push(['tbody', {}]);
+
+						for (const row of container.slice(2)) {
+							for (const [i, cell] of row.slice(2).entries()) {
+								const textAlign = alignments[i];
+								cell[0] = 'th';
+
+								if (textAlign) {
+									cell[1].style = { textAlign };
+								}
+							}
+						}
+					}
+
+					continue;
+				}
+		
+				nodes.unshift(['tr', {}, ...string.slice(0, -1).split('|').map((text, i) => {
+					const textAlign = alignments?.[i];
+					return ['td', textAlign ? { style: { textAlign } } : {}, text.trim()];
+				})]);
 
 				if (previous?.[0] !== 'table' || oldlines > 0) {
 					nodes.unshift(['table', {}], ['tbody', {}]);
 				} else {
-					container = previous[previous.length - 1]
+					container = previous[previous.length - 1];
 				}
 
 				break;
@@ -132,11 +232,11 @@ export default function parse (content) {
 
 		if (bullet) {
 			if (nodes.length) {
-				nodes.unshift(['li',,]);
+				nodes.unshift(['li', {}]);
 			} else if (spaced) {
-				nodes.unshift(['li',, ['p', {}, ...content]]);
+				nodes.unshift(['li', {}, ['p', {}, ...content]]);
 			} else {
-				nodes.unshift(['li',, ...content]);
+				nodes.unshift(['li', { '': index }, ...content]);
 				inlines.add(index);
 			}
 			
@@ -158,7 +258,7 @@ export default function parse (content) {
 					spaced = true;
 
 					for (const item of children) {
-						if (!item[1] || inlines.has(item[1][''])) {
+						if (inlines.has(item[1][''])) {
 							const content = item.splice(2);
 							item.push(['p', {}, ...content]);
 						}
@@ -167,13 +267,13 @@ export default function parse (content) {
 			}
 		}
 
-		if (!nodes.length) {
+		if (!nodes.length && content.length) {
 			if (previous?.[0] === 'p' && !oldlines) {
 				previous.push(['br'], ...content);
 				continue;
 			}
 
-			nodes.unshift(['p',, ...content]);
+			nodes.unshift(['p', {}, ...content]);
 		}
 
 		for (const node of nodes) {
@@ -181,7 +281,18 @@ export default function parse (content) {
 			container = node;
 		}
 
-		container[1] = { '': index };
+		if (nodes.length) {
+			container[1][''] = index;
+
+			if (container[0] !== 'tr') {
+				alignments = undefined;
+			}
+		}
+	}
+
+	for (const link of links) {
+		const key = link[1];
+		link[1] = { ...references[key] };
 	}
 
 	return stack[0][1];

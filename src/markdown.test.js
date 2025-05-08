@@ -1,4 +1,82 @@
-import parse from './markdown';
+import parse, { parseInline } from './markdown';
+
+describe('parseInline', () => {
+	// TODO: need to make sure table regex will skip over this format both at start of line and in table
+	it('spoiler tag', () => {
+		const actual = parseInline('||Item||');
+
+		// TODO: test this with CSS
+		// - this should work, since stew will clear the onlick attribute when clicked, and the new props are used
+		/*
+			span[onclick] {
+				color: transparent;
+				background: var(--font-color);
+				user-select: none;
+			} 
+		*/
+		expect(actual).toEqual([
+			['span', { onclick: {} }, 'Item']
+		]);
+	});
+
+	describe('links', () => {
+		it('relative', () => {
+			const actual = parseInline('[Label](/path)');
+
+			expect(actual).toEqual([
+				['a', { href: '/path' }, 'Label']
+			]);
+		});
+
+		it('absolute', () => {
+			const actual = parseInline('[Label](http://www.domain.com/path)');
+
+			expect(actual).toEqual([
+				['a', { href: 'http://www.domain.com/path' }, 'Label']
+			]);
+		});
+
+		it('dotted', () => {
+			const actual = parseInline('[Label](./path)', ['site', 'category', 'other']);
+
+			expect(actual).toEqual([
+				['a', { href: '/site/category/path' }, 'Label']
+			]);
+		});
+
+		it('backtrack', () => {
+			const actual = parseInline('[Label](../path)', ['site', 'category', 'other']);
+
+			expect(actual).toEqual([
+				['a', { href: '/site/path' }, 'Label']
+			]);
+		});
+
+		it('title double quotes', () => {
+			const actual = parseInline('[Label](/path "Title")');
+
+			expect(actual).toEqual([
+				['a', { href: '/path', title: 'Title' }, 'Label']
+			]);
+		});
+
+		it('title single quotes', () => {
+			const actual = parseInline('[Label](/path \'Title\')');
+
+			expect(actual).toEqual([
+				['a', { href: '/path', title: 'Title' }, 'Label']
+			]);
+		});
+
+		it('reference', () => {
+			const links = [];
+			const actual = parseInline('[Label][key]', ['site'], links);
+			const node = ['a', 'key', 'Label'];
+			expect(actual).toEqual([node]);
+			expect(links).toEqual([node]);
+		});
+	});
+});
 
 describe('parse', () => {
 	it('paragraph', () => {
@@ -239,7 +317,7 @@ describe('parse', () => {
 							['td', {}, '2'],
 							['td', {}, '3'],
 						],
-						['tr', { '': 0 },
+						['tr', { '': 8 },
 							['td', {}, 'A'],
 							['td', {}, 'B'],
 							['td', {}, 'C'],
@@ -255,12 +333,12 @@ describe('parse', () => {
 			expect(actual).toEqual(['', {},
 				['table', {},
 					['tbody', {},
-						['tr', { '': 0 },
+						['tr', { '': 14 },
 							['td', {}, '1'],
 							['td', { style: { textAlign: 'center' } }, '2'],
 							['td', { style: { textAlign: 'right' } }, '3'],
 						],
-						['tr', { '': 0 },
+						['tr', { '': 22 },
 							['td', {}, 'A'],
 							['td', { style: { textAlign: 'center' } }, 'B'],
 							['td', { style: { textAlign: 'right' } }, 'C'],
@@ -277,18 +355,18 @@ describe('parse', () => {
 				['table', {},
 					['thead', {},
 						['tr', { '': 0 },
-							['td', {}, 'L'],
-							['td', { style: { textAlign: 'center' } }, 'C'],
-							['td', { style: { textAlign: 'right' } }, 'R'],
+							['th', {}, 'L'],
+							['th', { style: { textAlign: 'center' } }, 'C'],
+							['th', { style: { textAlign: 'right' } }, 'R'],
 						],
 					],
 					['tbody', {},
-						['tr', { '': 0 },
+						['tr', { '': 22 },
 							['td', {}, '1'],
 							['td', { style: { textAlign: 'center' } }, '2'],
 							['td', { style: { textAlign: 'right' } }, '3'],
 						],
-						['tr', { '': 0 },
+						['tr', { '': 30 },
 							['td', {}, 'A'],
 							['td', { style: { textAlign: 'center' } }, 'B'],
 							['td', { style: { textAlign: 'right' } }, 'C'],
@@ -304,17 +382,39 @@ describe('parse', () => {
 			expect(actual).toEqual(['', {},
 				['table', {},
 					['tbody', {},
-						['tr', { '': 0 },
+						['tr', { '': 14 },
 							['td', {}, '1'],
 							['td', { style: { textAlign: 'center' } }, '2'],
 							['td', { style: { textAlign: 'right' } }, '3'],
 						],
-						['tr', { '': 0 },
+						['tr', { '': 36 },
 							['td', { style: { textAlign: 'center' } }, 'A'],
 							['td', { style: { textAlign: 'right' } }, 'B'],
 							['td', {}, 'C'],
 						],
 					],
+				],
+			]);
+		});
+	});
+
+	describe('link references', () => {
+		it('upper definition', () => {
+			const actual = parse('[key]: /path\n[Item][key]');
+
+			expect(actual).toEqual(['', {},
+				['p', { '': 13 },
+					['a', { href: '/path' }, 'Item'],
+				],
+			]);
+		});
+
+		it('upper definition', () => {
+			const actual = parse('[Item][key]\n[key]: /path');
+
+			expect(actual).toEqual(['', {},
+				['p', { '': 0 },
+					['a', { href: '/path' }, 'Item'],
 				],
 			]);
 		});
