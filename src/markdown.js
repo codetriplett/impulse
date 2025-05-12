@@ -1,7 +1,7 @@
 // headings: \n\s{0,3}#{1,6} or \n\s={1,} or \n\s-{1,}
 // list items: \n\s
 
-function buildPath (rootPath, href = '') {
+function buildPath (rootNames, href = '') {
 	if (!href.startsWith('.')) {
 		return href;
 	} else if (href === '.') {
@@ -9,7 +9,7 @@ function buildPath (rootPath, href = '') {
 	}
 
 	const sections = href.replace(/^.\//, '').split('/');
-	const sourcePath = rootPath.slice(0, -1);
+	const sourcePath = rootNames.slice(0, -1);
 
 	while (sections[0] === '..') {
 		sections.shift();
@@ -20,7 +20,7 @@ function buildPath (rootPath, href = '') {
 	return `/${sourcePath.join('/')}`;
 }
 
-export function parseInline (string, rootPath, links) {
+export function parseInline (string, rootNames, links) {
 	// TODO: process expressions in text (e.g. bold, strikethrough, ndash, etc)
 	// - return array of children to spread onto parent element
 	const content = [];
@@ -30,7 +30,13 @@ export function parseInline (string, rootPath, links) {
 
 		if (spoilerMatch) {
 			const [, spoiler, remainder] = spoilerMatch;
-			content.push(['span', { onclick: {} }, spoiler]);
+
+			content.push(['span', {
+				onclick: {
+					style: { color: 'transparent' },
+				},
+			}, spoiler]);
+
 			string = remainder;
 			continue;
 		}
@@ -49,7 +55,7 @@ export function parseInline (string, rootPath, links) {
 				continue;
 			}
 
-			const props = { href: buildPath(rootPath, href) };
+			const props = { href: buildPath(rootNames, href) };
 			node[1] = props;
 
 			if (title) {
@@ -66,26 +72,47 @@ export function parseInline (string, rootPath, links) {
 	return content;
 }
 
-export default function parse (content, rootPath) {
+// TODO: pass in a start and finish index as third and fourth params to render scoped mode
+// - only include content in the layout that exists within that range
+// - also include all link references
+export default function parse (content, rootPath = '', ...range) {
+	const [start = 0, finish = content.length] = range;
+	const [, trimmedPath, hash] = rootPath.match(/^\/?(.*?)\/?(?:#(.*))?$/);
+	const headingPath = range.length ? `/${trimmedPath}` : '';
+	const rootNames = trimmedPath ? trimmedPath.split('/') : [];
 	const lines = content.split('\n');
 	const stack = [[0, ['', {}]]];
 	const inlines = new Set();
 	const references = {};
 	const links = [];
-	let string = '';
+	const headings = [];
+	let remainingLength = 0;
 	let index = -1;
 	let newlines = 0;
 	let ticks = 0;
 	let spaced = false;
-	let alignments;
+	let alignments, containerId;
 
 	for (const line of lines) {
-		let padding = line.match(/[ \t]*/)[0];
-		index += string.length + padding.length + 1;
+		index += remainingLength;
+		let [, padding, key, href, title, string, id] = line.match(/^(\s*)(?:\[\s*(.+?)\s*\]:\s*(.+?)\s*(?:['"](.*?)['"])?\s*$)?(.*?)\s*(?:\{\s*#(.*?)\s*\})?\s*$/);
+		index += padding.length + 1;
+		remainingLength = line.length - padding.length;
+		
+		if (key && !references[key]) {
+			const props = { href: buildPath(rootNames, href) };
+			references[key] = props;
+			
+			if (title) {
+				props.title = title;
+			}
 
-		if (padding === line) {
+			continue;
+		} else if (!key && !string) {
 			newlines += 1;
-			string = line;
+			containerId = id;
+			continue;
+		} else if (index < start || index >= finish) {
 			continue;
 		}
 
@@ -145,24 +172,26 @@ export default function parse (content, rootPath) {
 			continue;
 		}
 
-		string = line.slice(padding.length);
-		const match = string.match(/^(?:(-|\d+[.)]) {1,4}(?![\s-]+$))?(?:\[\s*(.+?)\s*\]:\s*(.+?)\s*(?:['"](.*?)['"])?\s*$)?(#{1,6}(?= )|(?:=+|-[\s-]*|[+*])(?=\s*$)|\|(?!\|.*?\|\|))?\s*(.*?)\s*$/);
-		const [, bullet = '', key, href, title, command = '', text] = match;
-		const content = parseInline(text, rootPath, links);
+		const match = string.match(/^(?:([-+*:]|\d+[.)]) {1,4}(?![\s-]+$))?(#{1,6}(?= )|(?:=+|-[\s-]*|[+*])(?=\s*$)|\|(?!\|.*?\|\|))?\s*(.*?)\s*$/);
+		const [, bullet = '', command = '', text] = match;
+		const content = parseInline(text, rootNames, links);
 		const nodes = [];
-
-		if (key && !references[key]) {
-			const props = { href: buildPath(rootPath, href) };
-			references[key] = props;
-			
-			if (title) {
-				props.title = title;
-			}
-		}
 
 		switch (command[0]) {
 			case '#': {
-				nodes.unshift([command.length, {}, ...content]);
+				const heading = [command.length, {}];
+				nodes.unshift(heading);
+
+				if (hash === undefined || !hash && !id) {
+					heading.push(...content);
+				} else {
+					heading.push(['a', { href: `${headingPath}#${id || ''}` }, ...content]);
+
+					if (!id) {
+						headings.push(heading);
+					}
+				}
+
 				break;
 			}
 			case '=': {
@@ -174,9 +203,7 @@ export default function parse (content, rootPath) {
 				content.push(command);
 				break;
 			}
-			case '-':
-			case '+':
-			case '*': {
+			case '-': {
 				if (previous?.[0] === 'p' && oldlines === 0 && !/\s/.test(command)) {
 					previous[0] = 2;
 					continue;
@@ -231,24 +258,45 @@ export default function parse (content, rootPath) {
 		}
 
 		if (bullet) {
+			let type = 'ol';
+			let subtype = 'li';
+
+			switch (bullet) {
+				case '-':
+				case '+':
+				case '*': {
+					type = 'ul';
+					break;
+				}
+				case ':': {
+					type = 'dl';
+					subtype = 'dd';
+					break;
+				}
+			}
+
 			if (nodes.length) {
-				nodes.unshift(['li', {}]);
+				nodes.unshift([subtype, {}]);
 			} else if (spaced) {
-				nodes.unshift(['li', {}, ['p', {}, ...content]]);
+				nodes.unshift([subtype, {}, ['p', {}, ...content]]);
 			} else {
-				nodes.unshift(['li', { '': index }, ...content]);
+				nodes.unshift([subtype, { '': index }, ...content]);
 				inlines.add(index);
 			}
-			
-			const type = bullet === '-' ? 'ul' : 'ol';
 
 			if (oldlines > 1 || previous?.[0] !== type) {
-				const start = type === 'ul' ? '1' : bullet.slice(0, -1);
+				const start = type === 'ol' ? bullet.slice(0, -1) : '1';
 				const list = [type, start === '1' ? {} : { start }];
 				nodes.unshift(list);
 				spaced = false;
 				padding += `${bullet} `;
 				stack.push([padding.length, list]);
+
+				if (type === 'dl' && previous?.[0] === 'p') {
+					const term = container.pop();
+					term[0] = 'dt';
+					list.push(term);
+				}
 			} else {
 				container = previous;
 
@@ -276,18 +324,36 @@ export default function parse (content, rootPath) {
 			nodes.unshift(['p', {}, ...content]);
 		}
 
-		for (const node of nodes) {
-			container.push(node);
-			container = node;
-		}
 
 		if (nodes.length) {
+			if (oldlines && containerId) {
+				nodes[0][1].id = containerId;
+			}
+
+			for (const node of nodes) {
+				container.push(node);
+				container = node;
+			}
+
 			container[1][''] = index;
+
+			if (id) {
+				container[1].id = id;
+			}
 
 			if (container[0] !== 'tr') {
 				alignments = undefined;
 			}
 		}
+	}
+
+	// TODO: test that this only happens for headings that don't provide their own id, and if a custom hash prefix was provided
+	// - it should add links for headings that don't provide their own id, unless opting in with the custom hash prefix
+	// - adding deafult links to headings would complicate how snips work
+	for (const [i, heading] of headings.entries()) {
+		const id = `${hash || 'heading'}${i + 1}`;
+		heading[1].id = id;
+		heading[2][1].href += id;
 	}
 
 	for (const link of links) {

@@ -1,21 +1,17 @@
 import parse, { parseInline } from './markdown';
 
 describe('parseInline', () => {
-	// TODO: need to make sure table regex will skip over this format both at start of line and in table
 	it('spoiler tag', () => {
 		const actual = parseInline('||Item||');
 
-		// TODO: test this with CSS
-		// - this should work, since stew will clear the onlick attribute when clicked, and the new props are used
-		/*
-			span[onclick] {
-				color: transparent;
-				background: var(--font-color);
-				user-select: none;
-			} 
-		*/
 		expect(actual).toEqual([
-			['span', { onclick: {} }, 'Item']
+			['span', {
+				onclick: {
+					style: {
+						color: 'transparent',
+					},
+				},
+			}, 'Item']
 		]);
 	});
 
@@ -104,30 +100,84 @@ describe('parse', () => {
 		]);
 	});
 
-	it('headline', () => {
-		const actual = parse('# Headline');
+	describe('headline', () => {
+		it('headline primary', () => {
+			const actual = parse('Headline\n===');
 
-		expect(actual).toEqual(['', {},
-			[1, { '': 0 }, 'Headline'],
-		]);
+			expect(actual).toEqual(['', {},
+				[1, { '': 0 }, 'Headline'],
+			]);
+		});
+
+		it('headline secondary', () => {
+			const actual = parse('Headline\n---');
+
+			expect(actual).toEqual(['', {},
+				[2, { '': 0 }, 'Headline'],
+			]);
+		});
+		
+		it('one hash', () => {
+			const actual = parse('# Headline');
+
+			expect(actual).toEqual(['', {},
+				[1, { '': 0 }, 'Headline'],
+			]);
+		});
+		
+		it('six hashes', () => {
+			const actual = parse('###### Headline');
+
+			expect(actual).toEqual(['', {},
+				[6, { '': 0 }, 'Headline'],
+			]);
+		});
+		
+		it('with link', () => {
+			const actual = parse('# Headline {#lmno}', '#');
+
+			expect(actual).toEqual(['', {},
+				[1, { '': 0, id: 'lmno' },
+					['a', { href: '#lmno' }, 'Headline'],
+				],
+			]);
+		});
+		
+		it('without custom prefix link', () => {
+			const actual = parse('# Headline', '#');
+
+			expect(actual).toEqual(['', {},
+				[1, { '': 0 }, 'Headline'],
+			]);
+		});
+		
+		it('with custom prefix link', () => {
+			const actual = parse('# Headline', '#thing');
+
+			expect(actual).toEqual(['', {},
+				[1, { '': 0, id: 'thing1' },
+					['a', { href: '#thing1' }, 'Headline'],
+				],
+			]);
+		});
+
+		it('hash tag', () => {
+			const actual = parse('#lmno');
+
+			expect(actual).toEqual(['', {},
+				['p', { '': 0 }, '#lmno'],
+			]);
+		});
+		
+		it('extra hashes', () => {
+			const actual = parse('####### Headline');
+
+			expect(actual).toEqual(['', {},
+				['p', { '': 0 }, '####### Headline'],
+			]);
+		});
 	});
 
-	it('headline primary', () => {
-		const actual = parse('Headline\n===');
-
-		expect(actual).toEqual(['', {},
-			[1, { '': 0 }, 'Headline'],
-		]);
-	});
-
-	it('headline secondary', () => {
-		const actual = parse('Headline\n---');
-
-		expect(actual).toEqual(['', {},
-			[2, { '': 0 }, 'Headline'],
-		]);
-	});
-	
 	describe('preformatted', () => {
 		it('tab indentation', () => {
 			const actual = parse('\tabc');
@@ -138,7 +188,7 @@ describe('parse', () => {
 				],
 			]);
 		});
-		
+
 		it('space indentation', () => {
 			const actual = parse('    abc');
 
@@ -148,7 +198,7 @@ describe('parse', () => {
 				],
 			]);
 		});
-		
+
 		it('multiple lines', () => {
 			const actual = parse('\tabc\n\txyz');
 
@@ -158,7 +208,7 @@ describe('parse', () => {
 				],
 			]);
 		});
-		
+
 		it('several newlines', () => {
 			const actual = parse('\tabc\n\n\n\txyz');
 
@@ -168,7 +218,7 @@ describe('parse', () => {
 				],
 			]);
 		});
-		
+
 		it('tick wrapped', () => {
 			const actual = parse('```\nabc\n```');
 
@@ -178,7 +228,7 @@ describe('parse', () => {
 				],
 			]);
 		});
-		
+
 		it('nested ticks', () => {
 			const actual = parse('````\n```\nabc\n```\n````');
 
@@ -200,7 +250,7 @@ describe('parse', () => {
 				],
 			]);
 		});
-		
+
 		it('multiple items', () => {
 			const actual = parse('- Item\n- Adjacent');
 
@@ -239,7 +289,7 @@ describe('parse', () => {
 				],
 			]);
 		});
-		
+
 		it('ordered', () => {
 			const actual = parse('1. Item\n2. Adjacent');
 
@@ -250,7 +300,7 @@ describe('parse', () => {
 				],
 			]);
 		});
-		
+
 		it('offset start', () => {
 			const actual = parse('2. Item\n3. Adjacent');
 
@@ -274,7 +324,7 @@ describe('parse', () => {
 				],
 			]);
 		});
-		
+
 		it('nested', () => {
 			const actual = parse('- Item\n  - Child');
 
@@ -289,8 +339,47 @@ describe('parse', () => {
 				],
 			]);
 		});
+		
+		it('definition list', () => {
+			const actual = parse('Item\n: Child');
+
+			expect(actual).toEqual(['', {},
+				['dl', {},
+					['dt', { '': 0 }, 'Item'],
+					['dd', { '': 5 }, 'Child'],
+				],
+			]);
+		});
+		
+		it('definition multiple', () => {
+			const actual = parse('Item\n: Child\n: Adjacent');
+
+			expect(actual).toEqual(['', {},
+				['dl', {},
+					['dt', { '': 0 }, 'Item'],
+					['dd', { '': 5 }, 'Child'],
+					['dd', { '': 13 }, 'Adjacent'],
+				],
+			]);
+		});
+		
+		it('definition spaced', () => {
+			const actual = parse('Item\n\n: Child\n\n: Adjacent');
+
+			expect(actual).toEqual(['', {},
+				['dl', {},
+					['dt', { '': 0 }, 'Item'],
+					['dd', { '': 6 },
+						['p', {}, 'Child'],
+					],
+					['dd', { '': 15 },
+						['p', {}, 'Adjacent'],
+					],
+				],
+			]);
+		});
 	});
-	
+
 	describe('table', () => {
 		it('cell', () => {
 			const actual = parse('|Item|');
@@ -326,7 +415,7 @@ describe('parse', () => {
 				],
 			]);
 		});
-		
+
 		it('with alignment', () => {
 			const actual = parse('|---|:-:|--:|\n|1|2|3|\n|A|B|C|');
 
@@ -347,7 +436,7 @@ describe('parse', () => {
 				],
 			]);
 		});
-		
+
 		it('with header', () => {
 			const actual = parse('|L|C|R|\n|---|:-:|--:|\n|1|2|3|\n|A|B|C|');
 
@@ -375,7 +464,7 @@ describe('parse', () => {
 				],
 			]);
 		});
-		
+
 		it('with multple alignments', () => {
 			const actual = parse('|---|:-:|--:|\n|1|2|3|\n|:-:|--:|---|\n|A|B|C|');
 
@@ -393,6 +482,22 @@ describe('parse', () => {
 							['td', {}, 'C'],
 						],
 					],
+				],
+			]);
+		});
+
+		it('ignores spoiler', () => {
+			const actual = parse('||Item||');
+
+			expect(actual).toEqual(['', {},
+				['p', { '': 0 },
+					['span', {
+						onclick: {
+							style: {
+								color: 'transparent',
+							},
+						},
+					}, 'Item'],
 				],
 			]);
 		});
@@ -415,6 +520,119 @@ describe('parse', () => {
 			expect(actual).toEqual(['', {},
 				['p', { '': 0 },
 					['a', { href: '/path' }, 'Item'],
+				],
+			]);
+		});
+	});
+
+	describe('id', () => {
+		it('paragraph', () => {
+			const actual = parse('Item {#lmno}');
+
+			expect(actual).toEqual(['', {},
+				['p', { '': 0, id: 'lmno' }, 'Item'],
+			]);
+		});
+
+		it('headline', () => {
+			const actual = parse('# Headline {#lmno}');
+
+			expect(actual).toEqual(['', {},
+				[1, { '': 0, id: 'lmno' }, 'Headline'],
+			]);
+		});
+		
+		it('list', () => {
+			const actual = parse('{#lmno}\n- Item');
+
+			expect(actual).toEqual(['', {},
+				['ul', { id: 'lmno' },
+					['li', { '': 8 }, 'Item'],
+				],
+			]);
+		});
+
+		it('list item', () => {
+			const actual = parse('- Item {#lmno}');
+
+			expect(actual).toEqual(['', {},
+				['ul', {},
+					['li', { '': 0, id: 'lmno' }, 'Item'],
+				],
+			]);
+		});
+
+		it('table', () => {
+			const actual = parse('{#lmno}\n|1|2|3|\n|A|B|C|');
+
+			expect(actual).toEqual(['', {},
+				['table', { id: 'lmno' },
+					['tbody', {},
+						['tr', { '': 8 },
+							['td', {}, '1'],
+							['td', {}, '2'],
+							['td', {}, '3'],
+						],
+						['tr', { '': 16 },
+							['td', {}, 'A'],
+							['td', {}, 'B'],
+							['td', {}, 'C'],
+						],
+					],
+				],
+			]);
+		});
+
+		it('table row', () => {
+			const actual = parse('|Item|{#lmno}');
+
+			expect(actual).toEqual(['', {},
+				['table', {},
+					['tbody', {},
+						['tr', { '': 0, id: 'lmno' },
+							['td', {}, 'Item'],
+						],
+					],
+				],
+			]);
+		});
+	});
+
+	describe('range', () => {
+		it('ignores before', () => {
+			const actual = parse('# Before\n# Heading\n# After', '', 9);
+
+			expect(actual).toEqual(['', {},
+				[1, { '': 9 }, 'Heading'],
+				[1, { '': 19 }, 'After'],
+			]);
+		});
+
+		it('ignores after', () => {
+			const actual = parse('# Before\n# Heading\n# After', '', 9, 19);
+
+			expect(actual).toEqual(['', {},
+				[1, { '': 9 }, 'Heading'],
+			]);
+		});
+
+		it('includes heading path', () => {
+			const actual = parse('# Before\n# Heading {#lmno}', '/path#', 9);
+
+			expect(actual).toEqual(['', {},
+				[1, { '': 9, id: 'lmno' },
+					['a', { href: '/path#lmno' }, 'Heading'],
+				],
+			]);
+		});
+
+		it('includes link definitions', () => {
+			const actual = parse('[lmno]: /lmno\n# Before\n# Heading\n[Lmno][lmno]', '', 23);
+
+			expect(actual).toEqual(['', {},
+				[1, { '': 23 }, 'Heading'],
+				['p', { '': 33 },
+					['a', { href: '/lmno' }, 'Lmno'],
 				],
 			]);
 		});

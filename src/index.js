@@ -1,7 +1,8 @@
 import { parse } from './parse';
 import { updateNode } from './map';
 import { getObject } from './common';
-import { parseMD, extractTemplate, extractBlocks } from './parse';
+import parseMD from './markdown';
+import { extractTemplate, extractBlocks } from './parse';
 import { FormField } from './form';
 import { localStorage } from './storage';
 
@@ -507,8 +508,8 @@ function Citation ({ hashPath }) {
 		const [range] = info.split(/[:# ]/);
 		const [start, finish] = range.split('-');
 		const file = files[path];
-		const layout = parseMD(file, path);
-		scopeLayout(layout, start, finish);
+		const layout = parseMD(file, `${path}#`, start, finish);
+		// scopeLayout(layout, start, finish);
 		return layout;
 	}, [hashPath]);
 
@@ -676,7 +677,8 @@ function Page () {
 	}
 
 	let content = stew(() => {
-		return parseMD(file);
+		// TODO: should it provide heading prefix so headings without ids get a deep-link?
+		return parseMD(file, `${pathname}#heading`);
 	}, [file]);
 
 	const manifest = stew(() => {

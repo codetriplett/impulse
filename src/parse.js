@@ -1,6 +1,7 @@
-import { parse as mapNodetoAST } from '@textlint/markdown-to-ast';
+// import { parse as mapNodetoAST } from '@textlint/markdown-to-ast';
 // import { parse as parseJStoAST } from 'acorn';
 import { getObject } from './common';
+import parseMD from './markdown';
 
 // const options = {
 // 	ecmaVersion: 'latest',
@@ -65,315 +66,315 @@ import { getObject } from './common';
 // 	return imports;
 // }
 
-function processId (props, elements, ids) {
-	const suffix = elements[elements.length - 1];
+// function processId (props, elements, ids) {
+// 	const suffix = elements[elements.length - 1];
 
-	if (typeof suffix !== 'string') {
-		return;
-	}
+// 	if (typeof suffix !== 'string') {
+// 		return;
+// 	}
 
-	const [hash, id] = suffix.match(/\s*\{#(.*?)\}\s*$/) || [];
+// 	const [hash, id] = suffix.match(/\s*\{#(.*?)\}\s*$/) || [];
 
-	if (!hash) {
-		return;
-	}
+// 	if (!hash) {
+// 		return;
+// 	}
 
-	elements[elements.length - 1] = suffix.slice(0, -hash.length);
+// 	elements[elements.length - 1] = suffix.slice(0, -hash.length);
 
-	if (ids.has(id)) {
-		return;
-	}
+// 	if (ids.has(id)) {
+// 		return;
+// 	}
 
-	props.id = id;
-	ids.add(id);
-}
+// 	props.id = id;
+// 	ids.add(id);
+// }
 
-function processExtended (elements, nameless) {
-	const index = elements.findIndex(element => element?.[0] === 'br');
-	const sequence = elements.splice(0, index === -1 ? elements.length : index);
-	const [prefix] = sequence;
+// function processExtended (elements, nameless) {
+// 	const index = elements.findIndex(element => element?.[0] === 'br');
+// 	const sequence = elements.splice(0, index === -1 ? elements.length : index);
+// 	const [prefix] = sequence;
 
-	if (typeof prefix !== 'string') {
-		return sequence;
-	}
+// 	if (typeof prefix !== 'string') {
+// 		return sequence;
+// 	}
 
-	const [brackets, value] = prefix.match(/^\s*\[(.)\]\s+(?=\w)/) || [];
+// 	const [brackets, value] = prefix.match(/^\s*\[(.)\]\s+(?=\w)/) || [];
 
-	if (brackets) {
-		const checked = value === 'x';
-		sequence[0] = prefix.slice(brackets.length);
-		const input = ['input', { type: 'checkbox', checked }];
-		const label = ['label', {}, ...sequence];
-		nameless.push(input);
-		labelMap.set(input, label);
-		return [input, label];
-	}
+// 	if (brackets) {
+// 		const checked = value === 'x';
+// 		sequence[0] = prefix.slice(brackets.length);
+// 		const input = ['input', { type: 'checkbox', checked }];
+// 		const label = ['label', {}, ...sequence];
+// 		nameless.push(input);
+// 		labelMap.set(input, label);
+// 		return [input, label];
+// 	}
 	
-	return sequence;
-}
+// 	return sequence;
+// }
 
 const labelMap = new WeakMap();
 const rangeMap = new WeakMap();
 const idSet = new WeakSet();
 
-function parseNode (node, definitions, references, ids, nameless, path, tableAlign = [], i) {
-	const { type, range, value, align = tableAlign, children = [] } = node;
+// function parseNode (node, definitions, references, ids, nameless, path, tableAlign = [], i) {
+// 	const { type, range, value, align = tableAlign, children = [] } = node;
 	
-	if (node.type === 'Str') {
-		return value;
-	}
+// 	if (node.type === 'Str') {
+// 		return value;
+// 	}
 
-	const [start] = range;
-	const props = { key: start };
+// 	const [start] = range;
+// 	const props = { key: start };
 
-	switch (type) {
-		case 'Definition': {
-			const { label, url } = node;
+// 	switch (type) {
+// 		case 'Definition': {
+// 			const { label, url } = node;
 	
-			if (!Object.prototype.hasOwnProperty.call(definitions, label)) {
-				definitions[label] = url;
-			}
+// 			if (!Object.prototype.hasOwnProperty.call(definitions, label)) {
+// 				definitions[label] = url;
+// 			}
 	
-			return;
-		}
-		case 'Code': {
-			return ['code', props, value];
-		}
-		case 'CodeBlock': {
-			const { raw } = node;
-			const innerStart = start + raw.indexOf('\n') + 1;
-			const innerFinish = start + raw.lastIndexOf('```') - 1;
+// 			return;
+// 		}
+// 		case 'Code': {
+// 			return ['code', props, value];
+// 		}
+// 		case 'CodeBlock': {
+// 			const { raw } = node;
+// 			const innerStart = start + raw.indexOf('\n') + 1;
+// 			const innerFinish = start + raw.lastIndexOf('```') - 1;
 			
-			// TODO: use lang to trigger custom renderers
-			// if (lang) {
-			// 	props['data-lang'] = lang;
-			// }
+// 			// TODO: use lang to trigger custom renderers
+// 			// if (lang) {
+// 			// 	props['data-lang'] = lang;
+// 			// }
 
-			const block = ['pre', props,
-				['code', {}, value],
-			];
+// 			const block = ['pre', props,
+// 				['code', {}, value],
+// 			];
 
-			rangeMap.set(block, `:${innerStart}-${innerFinish}`);
-			return block;
-		}
-		case 'HorizontalRule': {
-			return ['hr', props];
-		}
-		case 'Break': {
-			return ['br', props];
-		}
-		case 'Image': {
-			const { url, title, alt } = node;
-			props.src = url;
-			props.alt = alt;
+// 			rangeMap.set(block, `:${innerStart}-${innerFinish}`);
+// 			return block;
+// 		}
+// 		case 'HorizontalRule': {
+// 			return ['hr', props];
+// 		}
+// 		case 'Break': {
+// 			return ['br', props];
+// 		}
+// 		case 'Image': {
+// 			const { url, title, alt } = node;
+// 			props.src = url;
+// 			props.alt = alt;
 
-			if (title !== null) {
-				props.title = title;
-			}
+// 			if (title !== null) {
+// 				props.title = title;
+// 			}
 
-			return ['img', props];
-		}
-	}
+// 			return ['img', props];
+// 		}
+// 	}
 
-	// TODO: put switch statement above this for ones that don't use children
-	const childElements = [];
+// 	// TODO: put switch statement above this for ones that don't use children
+// 	const childElements = [];
 	
-	for (const [i, child] of children.entries()) {
-		const element = parseNode(child, definitions, references, ids, nameless, path, align, i);
+// 	for (const [i, child] of children.entries()) {
+// 		const element = parseNode(child, definitions, references, ids, nameless, path, align, i);
 	
-		if (!element) {
-			continue;
-		} else if (typeof element !== 'string') {
-			childElements.push(element);
-			continue;
-		}
+// 		if (!element) {
+// 			continue;
+// 		} else if (typeof element !== 'string') {
+// 			childElements.push(element);
+// 			continue;
+// 		}
 		
-		const lines = element.split('\n');
+// 		const lines = element.split('\n');
 
-		for (const [j, line] of lines.entries()) {
-			if (j) {
-				childElements.push(['br', {}]);
-			}
+// 		for (const [j, line] of lines.entries()) {
+// 			if (j) {
+// 				childElements.push(['br', {}]);
+// 			}
 
-			if (line) {
-				childElements.push(line);
-			}
-		}
-	}
+// 			if (line) {
+// 				childElements.push(line);
+// 			}
+// 		}
+// 	}
 
-	switch (type) {
-		case 'Document': {
-			return ['', props, ...childElements];
-		}
-		case 'Header': {
-			processId(props, childElements, ids);
-			const { depth } = node;
-			const { id = '' } = props;
+// 	switch (type) {
+// 		case 'Document': {
+// 			return ['', props, ...childElements];
+// 		}
+// 		case 'Header': {
+// 			processId(props, childElements, ids);
+// 			const { depth } = node;
+// 			const { id = '' } = props;
 
-			const header = [depth, props,
-				['a', { href: `${path}#${id}` }, ...childElements],
-			];
+// 			const header = [depth, props,
+// 				['a', { href: `${path}#${id}` }, ...childElements],
+// 			];
 
-			if (id) {
-				idSet.add(header);
-			} else {
-				nameless.push(header);
-			}
+// 			if (id) {
+// 				idSet.add(header);
+// 			} else {
+// 				nameless.push(header);
+// 			}
 
-			return header;
-		}
-		case 'Paragraph': {
-			const elements = [];
+// 			return header;
+// 		}
+// 		case 'Paragraph': {
+// 			const elements = [];
 
-			while (childElements.length) {
-				const processedElements = processExtended(childElements, nameless);
-				elements.push(...processedElements);
+// 			while (childElements.length) {
+// 				const processedElements = processExtended(childElements, nameless);
+// 				elements.push(...processedElements);
 
-				if (!childElements.length) {
-					break;
-				}
+// 				if (!childElements.length) {
+// 					break;
+// 				}
 
-				const [br] = childElements.splice(0, 1);
-				elements.push(br);
-			}
+// 				const [br] = childElements.splice(0, 1);
+// 				elements.push(br);
+// 			}
 
-			return ['p', props, ...elements];
-		}
-		case 'List': {
-			const { ordered, spread } = node;
+// 			return ['p', props, ...elements];
+// 		}
+// 		case 'List': {
+// 			const { ordered, spread } = node;
 
-			if (!spread) {
-				for (const item of childElements) {
-					const paragraph = item[2];
+// 			if (!spread) {
+// 				for (const item of childElements) {
+// 					const paragraph = item[2];
 
-					if (item.length > 3 || paragraph?.[0] !== 'p') {
-						continue;
-					}
+// 					if (item.length > 3 || paragraph?.[0] !== 'p') {
+// 						continue;
+// 					}
 
-					item.splice(2, 1, ...paragraph.slice(2));
-				}
-			}
+// 					item.splice(2, 1, ...paragraph.slice(2));
+// 				}
+// 			}
 
-			const tag = ordered ? 'ol' : 'ul';
-			return [tag, props, ...childElements];
-		}
-		case 'ListItem': {
-			const { checked } = node;
-			const item = ['li', props, ...childElements];
+// 			const tag = ordered ? 'ol' : 'ul';
+// 			return [tag, props, ...childElements];
+// 		}
+// 		case 'ListItem': {
+// 			const { checked } = node;
+// 			const item = ['li', props, ...childElements];
 
-			if (checked !== null) {
-				const [paragraph] = childElements;
-				const labelElements = paragraph.splice(2);
-				const input = ['input', { type: 'checkbox', checked }];
-				const label = ['label', {}, ...labelElements];
-				paragraph.push(input, label);
-				nameless.push(input);
-				labelMap.set(input, label);
-			}
+// 			if (checked !== null) {
+// 				const [paragraph] = childElements;
+// 				const labelElements = paragraph.splice(2);
+// 				const input = ['input', { type: 'checkbox', checked }];
+// 				const label = ['label', {}, ...labelElements];
+// 				paragraph.push(input, label);
+// 				nameless.push(input);
+// 				labelMap.set(input, label);
+// 			}
 
-			return item;
-		}
-		case 'BlockQuote': {
-			return ['blockquote', props, ...childElements];
-		}
-		case 'Emphasis': {
-			return ['em', props, ...childElements];
-		}
-		case 'Strong': {
-			return ['strong', props, ...childElements];
-		}
-		case 'Delete': {
-			return ['del', props, ...childElements];
-		}
-		case 'Link': {
-			const { url, title } = node;
-			props.href = url;
+// 			return item;
+// 		}
+// 		case 'BlockQuote': {
+// 			return ['blockquote', props, ...childElements];
+// 		}
+// 		case 'Emphasis': {
+// 			return ['em', props, ...childElements];
+// 		}
+// 		case 'Strong': {
+// 			return ['strong', props, ...childElements];
+// 		}
+// 		case 'Delete': {
+// 			return ['del', props, ...childElements];
+// 		}
+// 		case 'Link': {
+// 			const { url, title } = node;
+// 			props.href = url;
 
-			if (title !== null) {
-				props.title = title;
-			}
+// 			if (title !== null) {
+// 				props.title = title;
+// 			}
 
-			return ['a', props, ...childElements];
-		}
-		case 'LinkReference': {
-			const { label } = node;
-			props.href = `#${label}`;
-			const link = ['a', props, ...childElements];
-			references.push(link);
-			return link;
-		}
-		case 'Table': {
-			const [head, ...body] = childElements;
+// 			return ['a', props, ...childElements];
+// 		}
+// 		case 'LinkReference': {
+// 			const { label } = node;
+// 			props.href = `#${label}`;
+// 			const link = ['a', props, ...childElements];
+// 			references.push(link);
+// 			return link;
+// 		}
+// 		case 'Table': {
+// 			const [head, ...body] = childElements;
 
-			for (const cell of head.slice(2)) {
-				cell[0] = 'th';
-			}
+// 			for (const cell of head.slice(2)) {
+// 				cell[0] = 'th';
+// 			}
 
-			return ['table', props,
-				['thead', {}, head],
-				['tbody', {}, ...body],
-			];
-		}
-		case 'TableRow': {
-			return ['tr', props, ...childElements];
-		}
-		case 'TableCell': {
-			const textAlign = tableAlign[i];
+// 			return ['table', props,
+// 				['thead', {}, head],
+// 				['tbody', {}, ...body],
+// 			];
+// 		}
+// 		case 'TableRow': {
+// 			return ['tr', props, ...childElements];
+// 		}
+// 		case 'TableCell': {
+// 			const textAlign = tableAlign[i];
 
-			if (textAlign) {
-				props.style = `text-align:${textAlign};`;
-			}
+// 			if (textAlign) {
+// 				props.style = `text-align:${textAlign};`;
+// 			}
 
-			return ['td', props, ...childElements];
-		}
-	}
-}
+// 			return ['td', props, ...childElements];
+// 		}
+// 	}
+// }
 
-export function parseMD (text, path = '') {
-	const root = mapNodetoAST(text);
-	const definitions = {};
-	const references = [];
-	const ids = new Set();
-	const nameless = [];
-	const fragment = parseNode(root, definitions, references, ids, nameless, path);
-	let headerIndex = 0;
-	let checkboxIndex = 0;
+// export function parseMD (text, path = '') {
+// 	const root = mapNodetoAST(text);
+// 	const definitions = {};
+// 	const references = [];
+// 	const ids = new Set();
+// 	const nameless = [];
+// 	const fragment = parseNode(root, definitions, references, ids, nameless, path);
+// 	let headerIndex = 0;
+// 	let checkboxIndex = 0;
 
-	for (const reference of references) {
-		const props = reference[1];
-		const label = props.href.slice(1);
+// 	for (const reference of references) {
+// 		const props = reference[1];
+// 		const label = props.href.slice(1);
 		
-		if (!Object.prototype.hasOwnProperty.call(definitions, label)) {
-			continue;
-		}
+// 		if (!Object.prototype.hasOwnProperty.call(definitions, label)) {
+// 			continue;
+// 		}
 
-		props.href = definitions[label];
-	}
+// 		props.href = definitions[label];
+// 	}
 
-	for (const element of nameless) {
-		const [tag] = element;
-		let id;
+// 	for (const element of nameless) {
+// 		const [tag] = element;
+// 		let id;
 
-		if (typeof tag === 'number') {
-			do {
-				id = `header${headerIndex++}`;
-			} while (ids.has(id))
+// 		if (typeof tag === 'number') {
+// 			do {
+// 				id = `header${headerIndex++}`;
+// 			} while (ids.has(id))
 
-			element[2][1].href += id;
-		} else if (tag === 'input') {
-			do {
-				id = `checkbox${checkboxIndex++}`;
-			} while (ids.has(id))
+// 			element[2][1].href += id;
+// 		} else if (tag === 'input') {
+// 			do {
+// 				id = `checkbox${checkboxIndex++}`;
+// 			} while (ids.has(id))
 
-			const label = labelMap.get(element);
-			label[1].for = id;
-		}
+// 			const label = labelMap.get(element);
+// 			label[1].for = id;
+// 		}
 		
-		element[1].id = id;
-	}
+// 		element[1].id = id;
+// 	}
 
-	return fragment;
-}
+// 	return fragment;
+// }
 
 export function findByType (candidates, expectedTag, ...nestedTags) {
 	const matches = [];
@@ -414,6 +415,16 @@ function getText (element) {
 	return element.slice(2).map(getText).join('');
 }
 
+function findLastIndex (array, callback) {
+	for (let i = array.length - 1; i >= 0; i--) {
+		if (callback(array[i])) {
+			return i;
+		}
+	}
+
+	return -1;
+}
+
 // TODO: change this to accpt result of parseMD
 // - have key prop store range string 'start-finish'
 // - have id prop store id for headings
@@ -441,18 +452,18 @@ export function mapNode (layout, prevStart, vars) {
 	for (let i = headings.length - 1; i >= 0; i--) {
 		const heading = headings[i];
 		const [depth, props] = heading;
-		const { key: start, id } = props;
+		const { '': start, id } = props;
 		const text = getText(heading).trim().replace(/\s\s+/, ' ');
 		const isExport = idSet.has(heading);
 		const snip = [start, prevStart, depth, text, id, isExport];
 		snips.unshift(snip);
 		prevStart = start;
 		
-		const blockIndex = blocks.findLastIndex(block => block[1].key < start);
+		const blockIndex = findLastIndex(blocks, block => block[1].key < start);
 		const snipBlocks = blocks.splice(blockIndex === -1 ? 0 : blockIndex + 1);
 		snip.push(depth === 1 || idSet.has(heading) ? snipBlocks[0] : undefined);
 
-		const linkIndex = links.findLastIndex(link => link[1].key < start);
+		const linkIndex = findLastIndex(links, link => link[1].key < start);
 		const snipLinks = links.splice(linkIndex === -1 ? 0 : linkIndex + 1);
 		snip.push(...snipLinks);
 	}
