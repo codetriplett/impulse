@@ -52,7 +52,7 @@ body.dark-theme {
 	--link-visited-font-color: #8d54c1;
 }
 
-.app {
+#app {
 	display: flex;
 	justify-content: center;
 	gap: 15px;

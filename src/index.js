@@ -1,7 +1,6 @@
 import { parse } from './parse';
 import { updateNode } from './map';
 import { getObject } from './common';
-import parseMD from './markdown';
 import { extractTemplate, extractBlocks } from './parse';
 import { FormField } from './form';
 import { localStorage } from './storage';
@@ -371,7 +370,12 @@ function processForm (form) {
 	return data;
 }
 
-function Editor ({ formRef, schema, data, file }) {
+function Editor ({ formRef, draftData, file }) {
+	// TODO: fetchCode of parent path to get schema, and fetchJson of current path to get savedData
+	// - store in onmount memos (savedData should be refetched when editor is opened again after save)
+	const schema = {};
+	const data = {}; // draftData || savedData
+
 	stew(null, [file], () => {
 		const [, textarea] = formRef;
 		textarea.value = file;
@@ -410,38 +414,6 @@ function Editor ({ formRef, schema, data, file }) {
 	];
 }
 
-async function fetchFile (path) {
-	const { files } = state;
-	const file = files[path.replace(/\.md$/, '')];
-
-	if (!file) {
-		return fetch(path).catch(() => ({
-			text: () => '',
-			json: () => ({}),
-		}));
-	}
-
-	return {
-		text: () => file,
-		json: () => JSON.parse(file),
-	};
-}
-
-function importFile (path) {
-	const { files } = state;
-	const file = files[path];
-
-	if (!file) {
-		return import(path).catch(() => {
-			console.log('==== MJS not found, might need to create from MD');
-		});
-	}
-
-	return import(URL.createObjectURL(
-		new Blob([file], { type: 'application/javascript' })
-	));
-}
-
 if (typeof window !== 'undefined') {
 	window.onhashchange = () => {
 		const { pathname, hash } = window.location;
@@ -473,51 +445,17 @@ function LeftMenuChildren ({ children }) {
 	];
 }
 
-function scopeLayout (layout, start, finish) {
-	const allChildren = layout.splice(2);
-	const fromIndex = allChildren.findIndex(child => child?.[1]?.key >= start);
-
-	if (fromIndex === -1) {
-		return;
-	}
-
-	const toIndex = allChildren.findIndex(child => child?.[1]?.key >= finish);
-
-	const children = toIndex === -1
-		? allChildren.splice(fromIndex)
-		: allChildren.splice(fromIndex, toIndex - fromIndex);
-
-	layout.push(...children);
-}
-
 function Citation ({ hashPath }) {
 	const { snips } = state;
 	const isActive = allCitations.some(citation => citation.path === hashPath);
-	const [path, hash] = hashPath.split('#');
+	const markdown = stew(fetchFile, [`${hashPath.split('#')[0]}.md`], undefined);
+	const layout = stew(markdown, [hashPath], undefined);
 
-	const layout = stew(() => {
-		const { files, map } = state;
-		const { '': locals = [] } = map[path] || {};
-		const local = locals[hash];
+	// TODO: clean up how manifest stores its data
+	// - it no longer needs to back in ranges, since markdown will scope itself from hash value
+	// - are any of the : symbols needed then?
 
-		if (!local) {
-			return;
-		}
-
-		const [info] = local;
-		const [range] = info.split(/[:# ]/);
-		const [start, finish] = range.split('-');
-		const file = files[path];
-		const layout = parseMD(file, `${path}#`, start, finish);
-		// scopeLayout(layout, start, finish);
-		return layout;
-	}, [hashPath]);
-
-	if (!layout) {
-		return null;
-	}
-
-	return ['div', {
+	return !layout ? null : ['div', {
 		className: `snip ${isActive ? '' : 'snip-inactive'}`,
 	},
 		['button', {
@@ -635,70 +573,40 @@ phase 2
 
 */
 
-function Page () {
-	const { hash, draftData, draft, snips, isLeftNavExpanded, isEditing, isChanged } = state;
-	const hashPath = `${pathname}${hash}`;
+function fetchText (path) {
+	// TODO: store with .md extension in localStorage, just like they would in the filesystem
+	const file = state.files[path.replace(/\.md$/, '')];
+	return file || fetch(path).then(res => res.text()).catch(() => '');
+}
 
-	// TODO: allow breaking of component chain by having two slashes
-	// - e.g. /site/category//info -> uses /site/category/info as the root instead of /site
-	const files = [...stew(() => {
-		const names = pathname.slice(1).split('/');
-		const promises = [];
-		let path = '';
+function fetchJson (path) {
+	const file = state.files[path];
+	return file ? JSON.parse(file) : fetch(path).then(res => res.json()).catch(() => null);
+}
 
-		while (names.length) {
-			path += `/${names.shift()}`;
+function fetchCode (path) {
+	const { files } = state;
+	const file = files[path];
 
-			if (promises.length) {
-				promises.push(fetchFile(`${path}.json`).then(res => res.json()));
-			}
-
-			promises.push(names.length
-				? importFile(`${path}.mjs`)
-				: fetchFile(`${path}.md`).then(res => res.text())
-			);
-		}
-
-		return Promise.all(promises);
-	}, [], [])];
-
-	if (!files.length) {
-		return;
-	}
-	
-	let file = files.pop();
-	const schema = files[files.length - 2]?.default?.[1];
-	const lastData = files[files.length - 1];
-	const formRef = [];
-	const resources = [];
-	
-	if (draft) {
-		file = draft;
+	if (!file) {
+		return import(path).catch(() => {
+			console.error(`Not found: ${path}`);
+		});
 	}
 
-	let content = stew(() => {
-		// TODO: should it provide heading prefix so headings without ids get a deep-link?
-		return parseMD(file, `${pathname}#heading`);
-	}, [file]);
+	return import(URL.createObjectURL(
+		new Blob([file], { type: 'application/javascript' })
+	));
+}
 
-	const manifest = stew(() => {
-		const manifest = {};
-		getCitations(pathname, manifest);
-		return manifest;
-		// getMentions(pathname, citations);
-	}, [content, hash]);
+function Block ({ names, data, resources }, content) {
+	const path = names.join('/');
 
-	// maybe it would work better to have sequence in reverse order
-	while (files.length > 1) {
-		let [module, data] = files.splice(-2);
-
-		if (data === lastData && draftData) {
-			data = draftData;
-		}
-
-		const [Component,, styles, ...urls] = module.default;
+	if (resources) {
+		const [Component,, styles, ...urls] = stew(fetchCode, [`/${path}.mjs`], {}).default || [];
 		const cssUrls = urls.filter(url => url.endsWith('.css'));
 		const jsUrls = urls.filter(url => /\.m?js$/.test(url));
+		content = Component && data ? Component(data, content) : undefined;
 
 		for (const src of jsUrls.reverse()) {
 			resources.unshift(['script', { type: 'module', src }]);
@@ -707,19 +615,83 @@ function Page () {
 		for (const href of cssUrls.reverse()) {
 			resources.unshift(['link', { rel: 'stylesheet', href }]);
 		}
-		
-		resources.unshift(['style', {}, styles]);
-		content = Component(data, content);
+
+		if (styles) {
+			resources.unshift(['style', null, styles]);
+		}
+	} else {
+		resources = [];
 	}
 
+	if (names.length < 2) {
+		return ['', null, ...resources, content];
+	}
+
+	names = names.slice(0, -1);
+	data = stew(fetchJson, [`/${path}.json`], null);
+	return Block({ names, data, resources }, content);
+}
+
+function Page () {
+	const [names, ...paths] = stew(() => {
+		const { pathname } = window.location;
+		const names = [];
+
+		const paths = pathname.replace(/^\/+|\/+$/g, '').replace(/\/{2,}/g, m => {
+			return `/${Array(m.length - 1).fill('.').join('')}/`
+		}).split(/\/(?=\.+\/)/);
+
+		if (!pathname.startsWith('//')) {
+			names.push(...paths.shift().split('/'));
+			paths.unshift(names[names.length - 1]);
+		}
+
+		paths[0] = `./${paths[0]}`;
+
+		return [names, ...paths.map(path => {
+			const [dots, ...rest] = path.split('/');
+			const { length } = dots;
+			names.splice(-length, length, ...rest);
+			return `/${names.join('/')}`;
+		})];
+	}, []);
+
+	const styles = stew(() => {
+		return document.querySelector('#styles').textContent;
+	}, []);
+	
+	// TODO: read and parse customizations object from localStage as an onmount memo for use in markdown call
+
+	const columns = paths.map(path => {
+		// TODO: include a revision number in deps to ensure new files are used once saved
+		// - this param won't be used by the function, so it should be fine
+		const markdown = stew(fetchText, [`${path}.md`], undefined);
+		return stew(markdown, [path, {}, 'main']);
+	});
+
+	const content = columns.length < 2 ? columns[0] : ['main', {
+		style: { display: 'flex' },
+	},
+		...columns.map(column => ['div', { style: { flex: '0 1 0' } }, ...column.slice(2)]),
+	];
+
+	const { hash, draftData, draft, snips, isLeftNavExpanded, isEditing, isChanged } = state;
+	const hashPath = `${pathname}${hash}`;
+	const formRef = [];
+
+	const manifest = stew(() => {
+		const manifest = {};
+		getCitations(pathname, manifest);
+		return manifest;
+		// getMentions(pathname, citations);
+	}, [content, hash]);
+
 	const leftButtonClassName = `expand-left ${!isLeftNavExpanded ? 'toggle-off' : ''}`;
-	const styles = document.querySelector('#styles').textContent;
-	resources.unshift(['style', {}, styles]);
 
 	return ['', {},
 		// TODO: toggle between left nav and editing mode
 		isEditing
-			? [Editor, { formRef, schema, data: draftData || lastData, file }]
+			? [Editor, { formRef, draftData, file }]
 			: isLeftNavExpanded && [LeftMenu, { manifest, hashPath, snips }],
 		['div', {
 			className: 'main',
@@ -790,10 +762,8 @@ function Page () {
 					}, '✕'],
 			['div', {},
 				['template', { shadowrootmode: 'open' },
-					['', {},
-						...resources,
-						content,
-					],
+					['style', null, styles],
+					names.length > 1 ? Block({ names }, content) : content,
 				],
 			],
 		],
@@ -805,9 +775,8 @@ if (typeof window !== 'undefined') {
 	recallSession().then(() => {
 		const { theme = 'dark' } = state.settings;
 		document.body.className = `${theme}-theme`;
-		// TODO: have object be for props instead of context
-		// - context can be set by wrapping children fragment
-		// - '' prop can still be used to set a converter function
-		stew('#app', { className: 'app' }, [pathname === '/' ? HomePage : Page]);
+		// TODO: should stew build new element from selector if not found?
+		// - also, should props be for attributes to apply to wrapper (but with '' still for convert function)
+		stew('#app', {}, [pathname === '/' ? HomePage : Page]);
 	});
 }

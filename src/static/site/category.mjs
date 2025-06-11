@@ -1,7 +1,7 @@
 export const category = function ({ page }, content) {
 	return ['div', { className: 'category' },
 		['div', { className: 'navigation' }, `${page} Nav`],
-		['div', null, content],
+		content,
 	];
 };
 export default [category, {
@@ -32,8 +32,13 @@ export default [category, {
 	// literal: 'abc *//* Fallback',
 }, `.category {
 	display: flex;
+	gap: 16px;
 }
 .navigation {
 	flex: 0 0 120px;
+	color: black;
 	background: lightgray;
+}
+main {
+	flex: 1 0 0;
 }`, '/site/other.css', '/site/other.mjs'];
