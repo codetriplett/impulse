@@ -77,13 +77,13 @@ const defaultFilePaths = [
 export async function recallSession () {
 	let files, map, templates, snips, settings;
 
-	try {
-		files = JSON.parse(localStorage.getItem('files'));
-		map = JSON.parse(localStorage.getItem('map'));
-		// templates = JSON.parse(storage.getItem('templates'));
-		snips = JSON.parse(localStorage.getItem('snips') || '[]');
-		settings = JSON.parse(localStorage.getItem('settings') || '{}');
-	} catch (err) {
+	// try {
+	// 	files = JSON.parse(localStorage.getItem('files'));
+	// 	map = JSON.parse(localStorage.getItem('map'));
+	// 	// templates = JSON.parse(storage.getItem('templates'));
+	// 	snips = JSON.parse(localStorage.getItem('snips') || '[]');
+	// 	settings = JSON.parse(localStorage.getItem('settings') || '{}');
+	// } catch (err) {
 		localStorage.removeItem('files');
 		localStorage.removeItem('map');
 		localStorage.removeItem('templates');
@@ -91,7 +91,7 @@ export async function recallSession () {
 		localStorage.removeItem('settings');
 		snips = [];
 		settings = {};
-	}
+	// }
 
 	Object.assign(state, { files, map, templates, snips, settings });
 
@@ -666,10 +666,17 @@ function Page () {
 		// TODO: include a revision number in deps to ensure new files are used once saved
 		// - this param won't be used by the function, so it should be fine
 		const markdown = stew(fetchText, [`${path}.md`], undefined);
-		return stew(markdown, [path, {}, 'main']);
+		return stew(markdown, [path, {}]);
 	});
 
-	const content = columns.length < 2 ? columns[0] : ['main', {
+	// TODO: clean up old map and manifest code
+	// - no longer need to maintain a map
+	// - ranges aren't needed, since markdown will render to the hash sections you give it
+	// - references aren't needed, since markdown will include the citations per section
+	// - this should clean up quite a bit of code and complexity
+	console.log('======= link map', columns[0][1]);
+
+	const content = columns.length < 2 ? ['main', null, columns[0]] : ['main', {
 		style: { display: 'flex' },
 	},
 		...columns.map(column => ['div', { style: { flex: '0 1 0' } }, ...column.slice(2)]),
